@@ -20,11 +20,9 @@ data class PurchaseEntity(
     val total: Double,
     val currency: String,
 
-    // Numéro imprimé sur le ticket
     @ColumnInfo(defaultValue = "''")
     val ticketNumber: String = "",
 
-    // Identifiant interne pour regrouper les lignes d'un même ticket
     val receiptId: String
 )
 
@@ -40,6 +38,12 @@ interface PurchaseDao {
     @Insert
     suspend fun insert(item: PurchaseEntity)
 
+    @Update
+    suspend fun update(item: PurchaseEntity)
+
+    @Query("DELETE FROM purchases WHERE id = :purchaseId")
+    suspend fun deletePurchase(purchaseId: Long)
+
     @Query("DELETE FROM purchases WHERE receiptId = :receiptId")
     suspend fun deleteReceipt(receiptId: String)
 
@@ -49,7 +53,11 @@ interface PurchaseDao {
     @Query("DELETE FROM purchases")
     suspend fun clearAll()
 
-    @Query("SELECT * FROM purchases WHERE ticketNumber LIKE '%' || :number || '%' ORDER BY id DESC")
+    @Query("""
+        SELECT * FROM purchases
+        WHERE ticketNumber LIKE '%' || :number || '%'
+        ORDER BY id DESC
+    """)
     suspend fun searchByTicketNumber(number: String): List<PurchaseEntity>
 }
 
