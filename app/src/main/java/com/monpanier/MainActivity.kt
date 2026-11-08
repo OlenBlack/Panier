@@ -1,4 +1,3 @@
-
 package com.monpanier.app
 
 import android.Manifest
@@ -9,10 +8,12 @@ import android.graphics.BitmapFactory
 import android.graphics.Matrix
 import android.net.Uri
 import android.os.Bundle
+
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageCapture
 import androidx.camera.core.ImageCaptureException
@@ -20,6 +21,7 @@ import androidx.camera.core.ImageProxy
 import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
+
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.gestures.detectDragGestures
@@ -27,10 +29,13 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
+
 import androidx.compose.runtime.*
+
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -43,28 +48,36 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.viewinterop.AndroidView
+
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LocalLifecycleOwner
+
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
+
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
+
 import java.util.concurrent.Executors
 import kotlin.math.abs
 import java.util.Locale
 
 private enum class Screen {
-    HOME, SCAN, CROP, REVIEW, HISTORY, STATS, PRICES, BASKET, SETTINGS, STORES
+    HOME, SCAN, CROP, REVIEW, HISTORY,
+    STATS, PRICES, BASKET, SETTINGS, STORES
 }
 
 private enum class AppLang { FR, AR }
 
 enum class Money(val label: String) {
-    DZD("DZD"), CAD("CAD")
+    DZD("DZD"),
+    CAD("CAD")
 }
 
 private data class Draft(
@@ -74,51 +87,99 @@ private data class Draft(
     val total: String
 )
 
+/* ACTIVITÉ PRINCIPALE */
+
 class MainActivity : ComponentActivity() {
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
         setContent {
-            MonPanierV2()
+            var showSplash by remember {
+                mutableStateOf(true)
+            }
+
+            LaunchedEffect(Unit) {
+                delay(2000)
+                showSplash = false
+            }
+
+            if (showSplash) {
+                SplashScreen()
+            } else {
+                MonPanierV2()
+            }
         }
     }
 }
 
+/* ÉCRAN DE DÉMARRAGE BY OLENBLACK */
+
+@Composable
+private fun SplashScreen() {
+    Image(
+        painter = painterResource(
+            id = R.drawable.splash_mon_panier
+        ),
+        contentDescription = "By OlenBlack",
+        modifier = Modifier.fillMaxSize(),
+        contentScale = ContentScale.Crop
+    )
+}
+
+/* APPLICATION MON PANIER */
+
 @Composable
 private fun MonPanierV2() {
+
     val context = LocalContext.current
 
     val dao = remember {
         PurchaseDatabase.get(context).purchaseDao()
     }
 
-    val purchases by dao.observeAll().collectAsState(initial = emptyList())
+    val purchases by dao.observeAll()
+        .collectAsState(initial = emptyList())
 
     // Répertoire permanent des magasins
-    val stores by dao.observeStores().collectAsState(initial = emptyList())
+    val stores by dao.observeStores()
+        .collectAsState(initial = emptyList())
 
     val prefs = remember {
-        context.getSharedPreferences("settings", Context.MODE_PRIVATE)
+        context.getSharedPreferences(
+            "settings",
+            Context.MODE_PRIVATE
+        )
     }
 
     var dark by remember {
-        mutableStateOf(prefs.getBoolean("dark", false))
+        mutableStateOf(
+            prefs.getBoolean("dark", false)
+        )
     }
 
     var lang by remember {
         mutableStateOf(
             if (prefs.getString("lang", "FR") == "AR")
-                AppLang.AR else AppLang.FR
+                AppLang.AR
+            else
+                AppLang.FR
         )
     }
 
     var money by remember {
         mutableStateOf(
             if (prefs.getString("money", "DZD") == "CAD")
-                Money.CAD else Money.DZD
+                Money.CAD
+            else
+                Money.DZD
         )
     }
 
-    var screen by remember { mutableStateOf(Screen.HOME) }
+    var screen by remember {
+        mutableStateOf(Screen.HOME)
+    }
+
     var ocrText by remember { mutableStateOf("") }
     var store by remember { mutableStateOf("") }
     var ticketNumber by remember { mutableStateOf("") }
@@ -128,7 +189,9 @@ private fun MonPanierV2() {
     var ocrBusy by remember { mutableStateOf(false) }
     var cropMsg by remember { mutableStateOf("") }
 
-    val snackbar = remember { SnackbarHostState() }
+    val snackbar = remember {
+        SnackbarHostState()
+    }
 
     LaunchedEffect(notice) {
         if (notice.isNotBlank()) {
@@ -139,10 +202,21 @@ private fun MonPanierV2() {
 
     val scope = rememberCoroutineScope()
 
-    val green = if (dark) Color(0xFF70D9A0) else Color(0xFF078A4B)
-    val bg = if (dark) Color(0xFF101713) else Color(0xFFF4F8F5)
-    val card = if (dark) Color(0xFF1C2922) else Color.White
-    val fg = if (dark) Color(0xFFEAF4ED) else Color(0xFF17221B)
+    val green =
+        if (dark) Color(0xFF70D9A0)
+        else Color(0xFF078A4B)
+
+    val bg =
+        if (dark) Color(0xFF101713)
+        else Color(0xFFF4F8F5)
+
+    val card =
+        if (dark) Color(0xFF1C2922)
+        else Color.White
+
+    val fg =
+        if (dark) Color(0xFFEAF4ED)
+        else Color(0xFF17221B)
 
     val isAr = lang == AppLang.AR
     val currencyCode = money.name
@@ -151,17 +225,22 @@ private fun MonPanierV2() {
         .filter { it.currency == currencyCode }
         .sumOf { it.total }
 
+    /* EXPORT EXCEL */
+
     val createXlsx = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument(
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
     ) { uri: Uri? ->
+
         if (uri != null) {
             scope.launch {
                 runCatching {
-                    context.contentResolver.openOutputStream(uri)?.use {
-                        ExcelExporter.export(purchases, it)
-                    } ?: error("Impossible d'ouvrir le fichier")
+                    context.contentResolver
+                        .openOutputStream(uri)?.use {
+                            ExcelExporter.export(purchases, it)
+                        }
+                        ?: error("Impossible d'ouvrir le fichier")
                 }.onSuccess {
                     notice = if (isAr)
                         "تم تصدير ملف Excel"
@@ -174,16 +253,21 @@ private fun MonPanierV2() {
         }
     }
 
-    // Sélection d'un ticket déjà présent dans le téléphone
+    /* IMPORTATION DEPUIS LA GALERIE */
+
     val galleryLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
+
         if (uri != null) {
             runCatching {
-                context.contentResolver.openInputStream(uri)?.use { stream ->
-                    BitmapFactory.decodeStream(stream)
-                } ?: error("Impossible de lire cette image")
+                context.contentResolver
+                    .openInputStream(uri)?.use { stream ->
+                        BitmapFactory.decodeStream(stream)
+                    }
+                    ?: error("Impossible de lire cette image")
             }.onSuccess { bitmap ->
+
                 if (bitmap != null) {
                     photo = bitmap
                     cropMsg = ""
@@ -192,28 +276,34 @@ private fun MonPanierV2() {
                 } else {
                     notice = "Impossible de lire cette image."
                 }
+
             }.onFailure {
                 notice = "Erreur d'importation : ${it.message}"
             }
         }
     }
 
+    /* THÈME DE L'APPLICATION */
+
     MaterialTheme(
-        colorScheme = if (dark)
+        colorScheme = if (dark) {
             darkColorScheme(
                 primary = green,
                 background = bg,
                 surface = card
             )
-        else
+        } else {
             lightColorScheme(
                 primary = green,
                 background = bg,
                 surface = card
             )
+        }
     ) {
+
         Scaffold(
             containerColor = bg,
+
             topBar = {
                 TopAppBarV2(
                     isAr,
@@ -222,38 +312,45 @@ private fun MonPanierV2() {
                     { screen = Screen.SETTINGS }
                 )
             },
+
             bottomBar = {
                 NavigationBar(containerColor = card) {
+
                     NavItem(
                         screen == Screen.HOME,
                         { screen = Screen.HOME },
                         Icons.Default.Home,
                         if (isAr) "الرئيسية" else "Accueil"
                     )
+
                     NavItem(
                         screen == Screen.STATS,
                         { screen = Screen.STATS },
                         Icons.Default.BarChart,
                         if (isAr) "إحصائيات" else "Stats"
                     )
+
                     NavItem(
                         screen == Screen.HISTORY,
                         { screen = Screen.HISTORY },
                         Icons.Default.ReceiptLong,
                         if (isAr) "السجل" else "Achats"
                     )
+
                     NavItem(
                         screen == Screen.BASKET,
                         { screen = Screen.BASKET },
                         Icons.Default.ShoppingCart,
                         if (isAr) "السلة" else "Panier"
                     )
+
                     NavItem(
                         screen == Screen.PRICES,
                         { screen = Screen.PRICES },
                         Icons.Default.ShowChart,
                         if (isAr) "الأسعار" else "Prix"
                     )
+
                     NavItem(
                         screen == Screen.SETTINGS,
                         { screen = Screen.SETTINGS },
@@ -262,13 +359,23 @@ private fun MonPanierV2() {
                     )
                 }
             },
+
             snackbarHost = {
                 SnackbarHost(snackbar)
             }
+
         ) { pad ->
+
             when (screen) {
+
                 Screen.HOME -> HomeV2(
-                    pad, purchases, money, lang, total, fg, card,
+                    pad,
+                    purchases,
+                    money,
+                    lang,
+                    total,
+                    fg,
+                    card,
                     { screen = Screen.SCAN },
                     { screen = Screen.HISTORY }
                 )
@@ -290,6 +397,7 @@ private fun MonPanierV2() {
                 )
 
                 Screen.CROP -> photo?.let { p ->
+
                     CropScreen(
                         pad,
                         isAr,
@@ -298,13 +406,17 @@ private fun MonPanierV2() {
                         p,
                         ocrBusy,
                         cropMsg,
+
                         onConfirm = { cropped ->
+
                             ocrBusy = true
                             cropMsg = ""
 
                             runOcr(
                                 cropped,
+
                                 onDone = { text, words ->
+
                                     ocrBusy = false
                                     ocrText = text
 
@@ -312,7 +424,8 @@ private fun MonPanierV2() {
                                         ReceiptParser.parseColumns(words)
 
                                     val parsedLines =
-                                        columnsResult ?: ReceiptParser.parse(text)
+                                        columnsResult
+                                            ?: ReceiptParser.parse(text)
 
                                     if (columnsResult == null) {
                                         notice = if (isAr)
@@ -325,39 +438,50 @@ private fun MonPanierV2() {
                                         Draft(
                                             it.product,
                                             fmtQty(it.quantity),
-                                            "%.2f".format(Locale.US, it.unitPrice),
-                                            "%.2f".format(Locale.US, it.total)
+                                            "%.2f".format(
+                                                Locale.US,
+                                                it.unitPrice
+                                            ),
+                                            "%.2f".format(
+                                                Locale.US,
+                                                it.total
+                                            )
                                         )
                                     }
 
                                     if (drafts.isEmpty()) {
-                                        drafts = listOf(Draft("", "1", "", ""))
+                                        drafts = listOf(
+                                            Draft("", "1", "", "")
+                                        )
                                     }
 
                                     photo = null
                                     screen = Screen.REVIEW
                                 },
+
                                 onFail = { msg ->
                                     ocrBusy = false
                                     cropMsg = msg
                                 }
                             )
                         },
+
                         onRetake = {
                             photo = null
                             screen = Screen.SCAN
                         }
                     )
                 }
-
                 Screen.REVIEW -> ReviewScreen(
                     pad = pad,
                     ar = isAr,
                     fg = fg,
                     card = card,
                     stores = stores,
+
                     onAddStore = { name ->
                         val cleanName = name.trim()
+
                         if (cleanName.isNotBlank()) {
                             scope.launch {
                                 dao.insertStoreIfAbsent(
@@ -367,6 +491,7 @@ private fun MonPanierV2() {
                             }
                         }
                     },
+
                     store = store,
                     onStore = { store = it },
                     ticketNumber = ticketNumber,
@@ -374,12 +499,16 @@ private fun MonPanierV2() {
                     drafts = drafts,
                     onDrafts = { drafts = it },
                     raw = ocrText,
+
                     onSave = {
                         val rid = ReceiptParser.receiptId()
                         val number = ticketNumber.trim()
-                        val storeName = store.trim().ifBlank { "Magasin" }
+                        val storeName = store.trim().ifBlank {
+                            "Magasin"
+                        }
 
                         val rows = drafts.mapNotNull { d ->
+
                             val q = d.quantity
                                 .replace(',', '.')
                                 .toDoubleOrNull()
@@ -416,7 +545,7 @@ private fun MonPanierV2() {
 
                         scope.launch {
                             if (rows.isNotEmpty()) {
-                                // Enregistre le magasin indépendamment du ticket
+
                                 dao.insertStoreIfAbsent(
                                     StoreEntity(name = storeName)
                                 )
@@ -432,6 +561,7 @@ private fun MonPanierV2() {
                                     "Achats enregistrés"
 
                                 screen = Screen.HOME
+
                             } else {
                                 notice = if (isAr)
                                     "تحقق من المنتجات والأسعار"
@@ -440,6 +570,7 @@ private fun MonPanierV2() {
                             }
                         }
                     },
+
                     onRescan = {
                         screen = Screen.SCAN
                     }
@@ -459,15 +590,30 @@ private fun MonPanierV2() {
                 )
 
                 Screen.STATS -> StatsV2(
-                    pad, purchases, money, isAr, fg, card
+                    pad,
+                    purchases,
+                    money,
+                    isAr,
+                    fg,
+                    card
                 )
 
                 Screen.PRICES -> PriceHistoryScreen(
-                    pad, purchases, money, isAr, fg, card
+                    pad,
+                    purchases,
+                    money,
+                    isAr,
+                    fg,
+                    card
                 )
 
                 Screen.BASKET -> SmartBasketScreen(
-                    pad, purchases, money, isAr, fg, card
+                    pad,
+                    purchases,
+                    money,
+                    isAr,
+                    fg,
+                    card
                 )
 
                 Screen.SETTINGS -> SettingsV2(
@@ -475,17 +621,23 @@ private fun MonPanierV2() {
                     dark = dark,
                     onDark = {
                         dark = it
-                        prefs.edit().putBoolean("dark", it).apply()
+                        prefs.edit()
+                            .putBoolean("dark", it)
+                            .apply()
                     },
                     money = money,
                     onMoney = {
                         money = it
-                        prefs.edit().putString("money", it.name).apply()
+                        prefs.edit()
+                            .putString("money", it.name)
+                            .apply()
                     },
                     lang = lang,
                     onLang = {
                         lang = it
-                        prefs.edit().putString("lang", it.name).apply()
+                        prefs.edit()
+                            .putString("lang", it.name)
+                            .apply()
                     },
                     ar = isAr,
                     fg = fg,
@@ -509,6 +661,8 @@ private fun MonPanierV2() {
         }
     }
 }
+
+/* BARRE SUPÉRIEURE */
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -536,11 +690,17 @@ private fun TopAppBarV2(
         },
         actions = {
             IconButton(onClick = onSettings) {
-                Icon(Icons.Default.Settings, null, tint = fg)
+                Icon(
+                    Icons.Default.Settings,
+                    null,
+                    tint = fg
+                )
             }
         }
     )
 }
+
+/* NAVIGATION */
 
 @Composable
 private fun RowScope.NavItem(
@@ -552,10 +712,16 @@ private fun RowScope.NavItem(
     NavigationBarItem(
         selected = selected,
         onClick = click,
-        icon = { Icon(icon, null) },
-        label = { Text(label) }
+        icon = {
+            Icon(icon, null)
+        },
+        label = {
+            Text(label)
+        }
     )
 }
+
+/* ACCUEIL */
 
 @Composable
 private fun HomeV2(
@@ -571,24 +737,39 @@ private fun HomeV2(
 ) {
     val ar = lang == AppLang.AR
     val symbol = if (money == Money.DZD) "DA" else "CAD"
-    val scoped = rows.filter { it.currency == money.name }
-    val sum = scoped.sumOf { it.total }
+
+    val scoped = rows.filter {
+        it.currency == money.name
+    }
+
+    val sum = scoped.sumOf {
+        it.total
+    }
 
     LazyColumn(
-        Modifier.fillMaxSize().padding(pad).padding(16.dp),
+        Modifier
+            .fillMaxSize()
+            .padding(pad)
+            .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
+
         item {
             Text(
-                if (ar) "مرحباً بك في Mon Panier"
-                else "Bienvenue dans Mon Panier",
+                if (ar)
+                    "مرحباً بك في Mon Panier"
+                else
+                    "Bienvenue dans Mon Panier",
                 fontSize = 24.sp,
                 fontWeight = FontWeight.Bold,
                 color = fg
             )
+
             Text(
-                if (ar) "تابع مشترياتك ونفقاتك"
-                else "Scanne tes tickets et suis tes dépenses.",
+                if (ar)
+                    "تابع مشترياتك ونفقاتك"
+                else
+                    "Scanne tes tickets et suis tes dépenses.",
                 color = fg.copy(alpha = .7f)
             )
         }
@@ -601,21 +782,30 @@ private fun HomeV2(
                 shape = RoundedCornerShape(22.dp)
             ) {
                 Column(
-                    Modifier.fillMaxWidth().padding(20.dp)
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(20.dp)
                 ) {
                     Text(
-                        if (ar) "إجمالي المشتريات"
-                        else "Total des achats",
+                        if (ar)
+                            "إجمالي المشتريات"
+                        else
+                            "Total des achats",
                         color = Color.White
                     )
+
                     Text(
                         "${"%.2f".format(Locale.FRANCE, sum)} $symbol",
                         fontSize = 30.sp,
                         fontWeight = FontWeight.Bold,
                         color = Color.White
                     )
+
                     Text(
-                        "${scoped.size} ${if (ar) "منتج مسجل" else "lignes enregistrées"}",
+                        "${scoped.size} ${
+                            if (ar) "منتج مسجل"
+                            else "lignes enregistrées"
+                        }",
                         color = Color.White
                     )
                 }
@@ -625,16 +815,24 @@ private fun HomeV2(
         item {
             Button(
                 onClick = onScan,
-                modifier = Modifier.fillMaxWidth().height(56.dp)
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(56.dp)
             ) {
                 Icon(Icons.Default.PhotoCamera, null)
                 Spacer(Modifier.width(8.dp))
-                Text(if (ar) "مسح إيصال" else "Scanner un ticket")
+
+                Text(
+                    if (ar) "مسح إيصال"
+                    else "Scanner un ticket"
+                )
             }
         }
 
         item {
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
                 SmallMetric(
                     Modifier.weight(1f),
                     if (ar) "المنتجات" else "Articles",
@@ -642,6 +840,7 @@ private fun HomeV2(
                     card,
                     fg
                 )
+
                 SmallMetric(
                     Modifier.weight(1f),
                     if (ar) "الإيصالات" else "Tickets",
@@ -654,7 +853,8 @@ private fun HomeV2(
 
         item {
             Text(
-                if (ar) "آخر المشتريات" else "Derniers achats",
+                if (ar) "آخر المشتريات"
+                else "Derniers achats",
                 fontWeight = FontWeight.Bold,
                 fontSize = 19.sp,
                 color = fg
@@ -662,14 +862,21 @@ private fun HomeV2(
         }
 
         items(scoped.take(5)) {
-            PurchaseRowV2(it, money, fg, card)
+            PurchaseRowV2(
+                it,
+                money,
+                fg,
+                card
+            )
         }
 
         if (rows.isEmpty()) {
             item {
                 Text(
-                    if (ar) "لا توجد مشتريات بعد. ابدأ بمسح أول إيصال."
-                    else "Aucun achat pour le moment. Scanne ton premier ticket.",
+                    if (ar)
+                        "لا توجد مشتريات بعد. ابدأ بمسح أول إيصال."
+                    else
+                        "Aucun achat pour le moment. Scanne ton premier ticket.",
                     color = fg.copy(alpha = .65f)
                 )
             }
@@ -677,11 +884,16 @@ private fun HomeV2(
 
         item {
             TextButton(onClick = onHistory) {
-                Text(if (ar) "عرض السجل الكامل" else "Voir tout l'historique")
+                Text(
+                    if (ar) "عرض السجل الكامل"
+                    else "Voir tout l'historique"
+                )
             }
         }
     }
 }
+
+/* PETITES STATISTIQUES DE L'ACCUEIL */
 
 @Composable
 private fun SmallMetric(
@@ -693,16 +905,24 @@ private fun SmallMetric(
 ) {
     Card(
         modifier,
-        colors = CardDefaults.cardColors(containerColor = card)
+        colors = CardDefaults.cardColors(
+            containerColor = card
+        )
     ) {
-        Column(Modifier.padding(14.dp)) {
+        Column(
+            Modifier.padding(14.dp)
+        ) {
             Text(
                 value,
                 fontSize = 24.sp,
                 fontWeight = FontWeight.Bold,
                 color = fg
             )
-            Text(label, color = fg.copy(alpha = .7f))
+
+            Text(
+                label,
+                color = fg.copy(alpha = .7f)
+            )
         }
     }
 }
@@ -720,10 +940,18 @@ private fun ScannerScreen(
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
-    val executor = remember { Executors.newSingleThreadExecutor() }
 
-    var capture by remember { mutableStateOf<ImageCapture?>(null) }
-    var message by remember { mutableStateOf("") }
+    val executor = remember {
+        Executors.newSingleThreadExecutor()
+    }
+
+    var capture by remember {
+        mutableStateOf<ImageCapture?>(null)
+    }
+
+    var message by remember {
+        mutableStateOf("")
+    }
 
     var permission by remember {
         mutableStateOf(
@@ -741,11 +969,16 @@ private fun ScannerScreen(
     }
 
     Column(
-        Modifier.fillMaxSize().padding(pad).padding(14.dp),
+        Modifier
+            .fillMaxSize()
+            .padding(pad)
+            .padding(14.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
+
         Text(
-            if (ar) "امسح إيصال الشراء" else "Scanner un ticket",
+            if (ar) "امسح إيصال الشراء"
+            else "Scanner un ticket",
             fontSize = 22.sp,
             fontWeight = FontWeight.Bold,
             color = fg
@@ -753,10 +986,13 @@ private fun ScannerScreen(
 
         Button(
             onClick = onGallery,
-            modifier = Modifier.fillMaxWidth().height(54.dp)
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(54.dp)
         ) {
             Icon(Icons.Default.Image, null)
             Spacer(Modifier.width(8.dp))
+
             Text(
                 if (ar)
                     "اختيار إيصال من الهاتف"
@@ -776,6 +1012,7 @@ private fun ScannerScreen(
         HorizontalDivider()
 
         if (!permission) {
+
             Text(
                 if (ar)
                     "يلزم السماح باستعمال الكاميرا"
@@ -784,26 +1021,41 @@ private fun ScannerScreen(
                 color = fg
             )
 
-            Button(onClick = {
-                request.launch(Manifest.permission.CAMERA)
-            }) {
-                Text(if (ar) "السماح" else "Autoriser la caméra")
+            Button(
+                onClick = {
+                    request.launch(Manifest.permission.CAMERA)
+                }
+            ) {
+                Text(
+                    if (ar) "السماح"
+                    else "Autoriser la caméra"
+                )
             }
+
         } else {
+
             AndroidView(
-                modifier = Modifier.weight(1f).fillMaxWidth(),
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth(),
+
                 factory = { ctx ->
+
                     val previewView = PreviewView(ctx)
+
                     val providerFuture =
                         ProcessCameraProvider.getInstance(ctx)
 
                     providerFuture.addListener({
+
                         val provider = providerFuture.get()
 
                         val preview = Preview.Builder()
                             .build()
                             .also {
-                                it.setSurfaceProvider(previewView.surfaceProvider)
+                                it.setSurfaceProvider(
+                                    previewView.surfaceProvider
+                                )
                             }
 
                         val imageCapture = ImageCapture.Builder()
@@ -816,15 +1068,19 @@ private fun ScannerScreen(
 
                         try {
                             provider.unbindAll()
+
                             provider.bindToLifecycle(
                                 lifecycleOwner,
                                 CameraSelector.DEFAULT_BACK_CAMERA,
                                 preview,
                                 imageCapture
                             )
+
                         } catch (e: Exception) {
-                            message = e.localizedMessage ?: "Erreur caméra"
+                            message = e.localizedMessage
+                                ?: "Erreur caméra"
                         }
+
                     }, ContextCompat.getMainExecutor(ctx))
 
                     previewView
@@ -833,6 +1089,7 @@ private fun ScannerScreen(
 
             Button(
                 onClick = {
+
                     val cap = capture ?: return@Button
 
                     message = if (ar)
@@ -842,8 +1099,12 @@ private fun ScannerScreen(
 
                     cap.takePicture(
                         executor,
+
                         object : ImageCapture.OnImageCapturedCallback() {
-                            override fun onCaptureSuccess(image: ImageProxy) {
+
+                            override fun onCaptureSuccess(
+                                image: ImageProxy
+                            ) {
                                 val bmp = try {
                                     imageToBitmap(image)
                                 } catch (e: Throwable) {
@@ -852,63 +1113,106 @@ private fun ScannerScreen(
 
                                 image.close()
 
-                                ContextCompat.getMainExecutor(context).execute {
-                                    if (bmp != null) {
-                                        onPhoto(bmp)
-                                    } else {
-                                        message = "Image invalide"
+                                ContextCompat
+                                    .getMainExecutor(context)
+                                    .execute {
+
+                                        if (bmp != null) {
+                                            onPhoto(bmp)
+                                        } else {
+                                            message = "Image invalide"
+                                        }
                                     }
-                                }
                             }
 
-                            override fun onError(exception: ImageCaptureException) {
-                                ContextCompat.getMainExecutor(context).execute {
-                                    message = exception.localizedMessage
-                                        ?: "Erreur de capture"
-                                }
+                            override fun onError(
+                                exception: ImageCaptureException
+                            ) {
+                                ContextCompat
+                                    .getMainExecutor(context)
+                                    .execute {
+                                        message =
+                                            exception.localizedMessage
+                                                ?: "Erreur de capture"
+                                    }
                             }
                         }
                     )
                 },
-                modifier = Modifier.fillMaxWidth().height(54.dp)
+
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(54.dp)
+
             ) {
                 Icon(Icons.Default.CameraAlt, null)
                 Spacer(Modifier.width(8.dp))
-                Text(if (ar) "التقاط الصورة" else "Prendre la photo")
+
+                Text(
+                    if (ar) "التقاط الصورة"
+                    else "Prendre la photo"
+                )
             }
 
             Text(
-                if (ar) "ضع الإيصال داخل الإطار مع إضاءة جيدة."
-                else "Place le ticket bien à plat, dans un endroit éclairé.",
+                if (ar)
+                    "ضع الإيصال داخل الإطار مع إضاءة جيدة."
+                else
+                    "Place le ticket bien à plat, dans un endroit éclairé.",
                 color = fg.copy(alpha = .7f)
             )
 
             if (message.isNotBlank()) {
-                Text(message, color = green)
+                Text(
+                    message,
+                    color = green
+                )
             }
         }
     }
 }
 
-private fun fmtQty(q: Double): String =
-    if (q % 1.0 == 0.0) q.toLong().toString() else q.toString()
+/* FORMATAGE DES QUANTITÉS */
 
-private fun imageToBitmap(image: ImageProxy): Bitmap {
+private fun fmtQty(q: Double): String =
+    if (q % 1.0 == 0.0)
+        q.toLong().toString()
+    else
+        q.toString()
+
+/* CONVERSION DE LA PHOTO */
+
+private fun imageToBitmap(
+    image: ImageProxy
+): Bitmap {
+
     var bmp = image.toBitmap()
+
     val rotation = image.imageInfo.rotationDegrees
 
     if (rotation != 0) {
         val m = Matrix()
         m.postRotate(rotation.toFloat())
+
         bmp = Bitmap.createBitmap(
-            bmp, 0, 0, bmp.width, bmp.height, m, true
+            bmp,
+            0,
+            0,
+            bmp.width,
+            bmp.height,
+            m,
+            true
         )
     }
 
-    val longSide = maxOf(bmp.width, bmp.height)
+    val longSide = maxOf(
+        bmp.width,
+        bmp.height
+    )
 
     if (longSide > 2600) {
         val s = 2600f / longSide
+
         bmp = Bitmap.createScaledBitmap(
             bmp,
             (bmp.width * s).toInt(),
@@ -920,6 +1224,8 @@ private fun imageToBitmap(image: ImageProxy): Bitmap {
     return bmp
 }
 
+/* RECONNAISSANCE OCR */
+
 private fun runOcr(
     bitmap: Bitmap,
     onDone: (String, List<OcrWord>) -> Unit,
@@ -927,15 +1233,20 @@ private fun runOcr(
 ) {
     val input = InputImage.fromBitmap(bitmap, 0)
 
-    TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
+    TextRecognition
+        .getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
         .process(input)
+
         .addOnSuccessListener { result ->
+
             val words = ArrayList<OcrWord>()
 
             for (block in result.textBlocks) {
                 for (line in block.lines) {
                     for (el in line.elements) {
+
                         val b = el.boundingBox ?: continue
+
                         words.add(
                             OcrWord(
                                 el.text,
@@ -949,10 +1260,17 @@ private fun runOcr(
                 }
             }
 
-            onDone(result.text, words)
+            onDone(
+                result.text,
+                words
+            )
         }
+
         .addOnFailureListener { e ->
-            onFail("OCR : " + (e.localizedMessage ?: "erreur"))
+            onFail(
+                "OCR : " +
+                    (e.localizedMessage ?: "erreur")
+            )
         }
 }
 
@@ -1004,11 +1322,15 @@ private fun CropScreen(
     }
 
     Column(
-        Modifier.fillMaxSize().padding(pad).padding(14.dp),
+        Modifier
+            .fillMaxSize()
+            .padding(pad)
+            .padding(14.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         Text(
-            if (ar) "اضبط إطار الإيصال" else "Cadrer le ticket",
+            if (ar) "اضبط إطار الإيصال"
+            else "Cadrer le ticket",
             fontSize = 22.sp,
             fontWeight = FontWeight.Bold,
             color = fg
@@ -1034,14 +1356,19 @@ private fun CropScreen(
                             active = when {
                                 abs(p.x - cl) < handle &&
                                     abs(p.y - ct) < handle -> 1
+
                                 abs(p.x - cr) < handle &&
                                     abs(p.y - ct) < handle -> 2
+
                                 abs(p.x - cl) < handle &&
                                     abs(p.y - cb) < handle -> 3
+
                                 abs(p.x - cr) < handle &&
                                     abs(p.y - cb) < handle -> 4
+
                                 p.x >= cl && p.x <= cr &&
                                     p.y >= ct && p.y <= cb -> 5
+
                                 else -> 0
                             }
                         },
@@ -1057,26 +1384,47 @@ private fun CropScreen(
 
                             when (active) {
                                 1 -> {
-                                    cl = (cl + d.x).coerceIn(minX, cr - minSize)
-                                    ct = (ct + d.y).coerceIn(minY, cb - minSize)
+                                    cl = (cl + d.x)
+                                        .coerceIn(minX, cr - minSize)
+
+                                    ct = (ct + d.y)
+                                        .coerceIn(minY, cb - minSize)
                                 }
+
                                 2 -> {
-                                    cr = (cr + d.x).coerceIn(cl + minSize, maxX)
-                                    ct = (ct + d.y).coerceIn(minY, cb - minSize)
+                                    cr = (cr + d.x)
+                                        .coerceIn(cl + minSize, maxX)
+
+                                    ct = (ct + d.y)
+                                        .coerceIn(minY, cb - minSize)
                                 }
+
                                 3 -> {
-                                    cl = (cl + d.x).coerceIn(minX, cr - minSize)
-                                    cb = (cb + d.y).coerceIn(ct + minSize, maxY)
+                                    cl = (cl + d.x)
+                                        .coerceIn(minX, cr - minSize)
+
+                                    cb = (cb + d.y)
+                                        .coerceIn(ct + minSize, maxY)
                                 }
+
                                 4 -> {
-                                    cr = (cr + d.x).coerceIn(cl + minSize, maxX)
-                                    cb = (cb + d.y).coerceIn(ct + minSize, maxY)
+                                    cr = (cr + d.x)
+                                        .coerceIn(cl + minSize, maxX)
+
+                                    cb = (cb + d.y)
+                                        .coerceIn(ct + minSize, maxY)
                                 }
+
                                 5 -> {
                                     val w = cr - cl
                                     val h = cb - ct
-                                    val nl = (cl + d.x).coerceIn(minX, maxX - w)
-                                    val nt = (ct + d.y).coerceIn(minY, maxY - h)
+
+                                    val nl = (cl + d.x)
+                                        .coerceIn(minX, maxX - w)
+
+                                    val nt = (ct + d.y)
+                                        .coerceIn(minY, maxY - h)
+
                                     cl = nl
                                     ct = nt
                                     cr = nl + w
@@ -1097,10 +1445,29 @@ private fun CropScreen(
             Canvas(Modifier.fillMaxSize()) {
                 val dim = Color.Black.copy(alpha = 0.55f)
 
-                drawRect(dim, Offset(0f, 0f), Size(size.width, ct))
-                drawRect(dim, Offset(0f, cb), Size(size.width, size.height - cb))
-                drawRect(dim, Offset(0f, ct), Size(cl, cb - ct))
-                drawRect(dim, Offset(cr, ct), Size(size.width - cr, cb - ct))
+                drawRect(
+                    dim,
+                    Offset(0f, 0f),
+                    Size(size.width, ct)
+                )
+
+                drawRect(
+                    dim,
+                    Offset(0f, cb),
+                    Size(size.width, size.height - cb)
+                )
+
+                drawRect(
+                    dim,
+                    Offset(0f, ct),
+                    Size(cl, cb - ct)
+                )
+
+                drawRect(
+                    dim,
+                    Offset(cr, ct),
+                    Size(size.width - cr, cb - ct)
+                )
 
                 drawRect(
                     green,
@@ -1135,15 +1502,30 @@ private fun CropScreen(
             Button(
                 onClick = {
                     val x = ((cl - offX) / scale)
-                        .toInt().coerceIn(0, bitmap.width - 1)
-                    val y = ((ct - offY) / scale)
-                        .toInt().coerceIn(0, bitmap.height - 1)
-                    val w = ((cr - cl) / scale)
-                        .toInt().coerceIn(1, bitmap.width - x)
-                    val h = ((cb - ct) / scale)
-                        .toInt().coerceIn(1, bitmap.height - y)
+                        .toInt()
+                        .coerceIn(0, bitmap.width - 1)
 
-                    onConfirm(Bitmap.createBitmap(bitmap, x, y, w, h))
+                    val y = ((ct - offY) / scale)
+                        .toInt()
+                        .coerceIn(0, bitmap.height - 1)
+
+                    val w = ((cr - cl) / scale)
+                        .toInt()
+                        .coerceIn(1, bitmap.width - x)
+
+                    val h = ((cb - ct) / scale)
+                        .toInt()
+                        .coerceIn(1, bitmap.height - y)
+
+                    onConfirm(
+                        Bitmap.createBitmap(
+                            bitmap,
+                            x,
+                            y,
+                            w,
+                            h
+                        )
+                    )
                 },
                 enabled = !busy,
                 modifier = Modifier.weight(1f)
@@ -1159,7 +1541,7 @@ private fun CropScreen(
     }
 }
 
-/* ÉCRAN DE VÉRIFICATION AVEC RÉPERTOIRE DES MAGASINS */
+/* ÉCRAN DE VÉRIFICATION OCR */
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -1185,20 +1567,25 @@ private fun ReviewScreen(
     var newStoreName by remember { mutableStateOf("") }
 
     Column(
-        Modifier.fillMaxSize().padding(pad).padding(14.dp),
+        Modifier
+            .fillMaxSize()
+            .padding(pad)
+            .padding(14.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         Text(
-            if (ar) "تحقق من المنتجات" else "Vérifier les articles",
+            if (ar) "تحقق من المنتجات"
+            else "Vérifier les articles",
             fontSize = 22.sp,
             fontWeight = FontWeight.Bold,
             color = fg
         )
 
-        // Choix d'un magasin déjà enregistré
         ExposedDropdownMenuBox(
             expanded = expanded,
-            onExpandedChange = { expanded = !expanded }
+            onExpandedChange = {
+                expanded = !expanded
+            }
         ) {
             OutlinedTextField(
                 value = store,
@@ -1210,20 +1597,19 @@ private fun ReviewScreen(
                     Text(if (ar) "اختر متجراً" else "Choisir un magasin")
                 },
                 trailingIcon = {
-                    ExposedDropdownMenuDefaults.TrailingIcon(
-                        expanded = expanded
-                    )
+                    ExposedDropdownMenuDefaults.TrailingIcon(expanded)
                 },
                 modifier = Modifier
                     .fillMaxWidth()
                     .menuAnchor(),
-                singleLine = true,
-                colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors()
+                singleLine = true
             )
 
             ExposedDropdownMenu(
                 expanded = expanded,
-                onDismissRequest = { expanded = false }
+                onDismissRequest = {
+                    expanded = false
+                }
             ) {
                 stores.forEach { item ->
                     DropdownMenuItem(
@@ -1261,6 +1647,7 @@ private fun ReviewScreen(
         ) {
             Icon(Icons.Default.Add, null)
             Spacer(Modifier.width(8.dp))
+
             Text(
                 if (ar) "إضافة متجر جديد"
                 else "Ajouter un nouveau magasin"
@@ -1273,7 +1660,9 @@ private fun ReviewScreen(
             label = {
                 Text(if (ar) "رقم الإيصال" else "Numéro du ticket")
             },
-            placeholder = { Text("Ex. : TCK-2026-00125") },
+            placeholder = {
+                Text("Ex. : TCK-2026-00125")
+            },
             modifier = Modifier.fillMaxWidth(),
             singleLine = true
         )
@@ -1292,10 +1681,15 @@ private fun ReviewScreen(
                 val d = drafts[i]
 
                 Card(
-                    colors = CardDefaults.cardColors(containerColor = card)
+                    colors = CardDefaults.cardColors(
+                        containerColor = card
+                    )
                 ) {
                     Column(Modifier.padding(10.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
+
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
                             OutlinedTextField(
                                 value = d.product,
                                 onValueChange = { v ->
@@ -1385,7 +1779,9 @@ private fun ReviewScreen(
             }
         }
 
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
             OutlinedButton(
                 onClick = onRescan,
                 modifier = Modifier.weight(1f)
@@ -1402,28 +1798,29 @@ private fun ReviewScreen(
         }
 
         Text(
-            if (ar) "ملاحظة: تحقق دائماً من نتائج التعرف الضوئي."
-            else "Important : l'OCR peut se tromper. Vérifie chaque ligne avant de sauvegarder.",
+            if (ar)
+                "ملاحظة: تحقق دائماً من نتائج التعرف الضوئي."
+            else
+                "Important : l'OCR peut se tromper. Vérifie chaque ligne avant de sauvegarder.",
             fontSize = 11.sp,
             color = fg.copy(alpha = .6f)
         )
     }
 
-    // Fenêtre d'ajout rapide d'un magasin
     if (showAddStore) {
         AlertDialog(
             onDismissRequest = {
                 showAddStore = false
             },
             title = {
-                Text(
-                    if (ar) "إضافة متجر" else "Ajouter un magasin"
-                )
+                Text(if (ar) "إضافة متجر" else "Ajouter un magasin")
             },
             text = {
                 OutlinedTextField(
                     value = newStoreName,
-                    onValueChange = { newStoreName = it },
+                    onValueChange = {
+                        newStoreName = it
+                    },
                     label = {
                         Text(if (ar) "اسم المتجر" else "Nom du magasin")
                     },
@@ -1457,7 +1854,7 @@ private fun ReviewScreen(
     }
 }
 
-/* HISTORIQUE : RECHERCHE, MODIFICATION ET SUPPRESSION */
+/* HISTORIQUE DES ACHATS */
 
 @Composable
 private fun HistoryV2(
@@ -1472,8 +1869,8 @@ private fun HistoryV2(
 ) {
     var search by remember { mutableStateOf("") }
     var message by remember { mutableStateOf("") }
-    val scope = rememberCoroutineScope()
 
+    val scope = rememberCoroutineScope()
     val query = search.trim()
 
     val filtered = rows.filter {
@@ -1487,11 +1884,15 @@ private fun HistoryV2(
     }
 
     Column(
-        Modifier.fillMaxSize().padding(pad).padding(14.dp)
+        Modifier
+            .fillMaxSize()
+            .padding(pad)
+            .padding(14.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
-                if (ar) "سجل المشتريات" else "Historique des achats",
+                if (ar) "سجل المشتريات"
+                else "Historique des achats",
                 Modifier.weight(1f),
                 fontSize = 21.sp,
                 fontWeight = FontWeight.Bold,
@@ -1551,6 +1952,7 @@ private fun HistoryV2(
                     purchase = purchase,
                     fg = fg,
                     card = card,
+
                     onUpdate = { updated ->
                         scope.launch {
                             runCatching {
@@ -1565,6 +1967,7 @@ private fun HistoryV2(
                             }
                         }
                     },
+
                     onDeletePurchase = {
                         scope.launch {
                             runCatching {
@@ -1579,6 +1982,7 @@ private fun HistoryV2(
                             }
                         }
                     },
+
                     onDeleteReceipt = {
                         scope.launch {
                             runCatching {
@@ -1599,12 +2003,15 @@ private fun HistoryV2(
 
         if (filtered.isEmpty()) {
             Text(
-                if (ar) "لا توجد نتائج" else "Aucun achat trouvé.",
+                if (ar) "لا توجد نتائج"
+                else "Aucun achat trouvé.",
                 color = fg.copy(alpha = .7f)
             )
         }
     }
 }
+
+/* GESTION D'UN ACHAT */
 
 @Composable
 private fun PurchaseManagementRow(
@@ -1623,12 +2030,15 @@ private fun PurchaseManagementRow(
     var product by remember(purchase.id) {
         mutableStateOf(purchase.product)
     }
+
     var quantity by remember(purchase.id) {
         mutableStateOf(purchase.quantity.toString())
     }
+
     var unitPrice by remember(purchase.id) {
         mutableStateOf(purchase.unitPrice.toString())
     }
+
     var total by remember(purchase.id) {
         mutableStateOf(purchase.total.toString())
     }
@@ -1636,11 +2046,15 @@ private fun PurchaseManagementRow(
     var error by remember { mutableStateOf("") }
 
     Card(
-        colors = CardDefaults.cardColors(containerColor = card),
+        colors = CardDefaults.cardColors(
+            containerColor = card
+        ),
         shape = RoundedCornerShape(14.dp)
     ) {
         Row(
-            Modifier.fillMaxWidth().padding(12.dp),
+            Modifier
+                .fillMaxWidth()
+                .padding(12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Icon(
@@ -1686,7 +2100,11 @@ private fun PurchaseManagementRow(
             }
 
             Box {
-                IconButton(onClick = { menuExpanded = true }) {
+                IconButton(
+                    onClick = {
+                        menuExpanded = true
+                    }
+                ) {
                     Icon(
                         Icons.Default.MoreVert,
                         contentDescription = "Options",
@@ -1696,10 +2114,14 @@ private fun PurchaseManagementRow(
 
                 DropdownMenu(
                     expanded = menuExpanded,
-                    onDismissRequest = { menuExpanded = false }
+                    onDismissRequest = {
+                        menuExpanded = false
+                    }
                 ) {
                     DropdownMenuItem(
-                        text = { Text("Modifier cet achat") },
+                        text = {
+                            Text("Modifier cet achat")
+                        },
                         leadingIcon = {
                             Icon(Icons.Default.Edit, null)
                         },
@@ -1710,7 +2132,9 @@ private fun PurchaseManagementRow(
                     )
 
                     DropdownMenuItem(
-                        text = { Text("Supprimer ce produit") },
+                        text = {
+                            Text("Supprimer ce produit")
+                        },
                         leadingIcon = {
                             Icon(Icons.Default.Delete, null)
                         },
@@ -1721,7 +2145,9 @@ private fun PurchaseManagementRow(
                     )
 
                     DropdownMenuItem(
-                        text = { Text("Supprimer tout le ticket") },
+                        text = {
+                            Text("Supprimer tout le ticket")
+                        },
                         leadingIcon = {
                             Icon(Icons.Default.DeleteForever, null)
                         },
@@ -1737,8 +2163,12 @@ private fun PurchaseManagementRow(
 
     if (editDialog) {
         AlertDialog(
-            onDismissRequest = { editDialog = false },
-            title = { Text("Modifier l'achat") },
+            onDismissRequest = {
+                editDialog = false
+            },
+            title = {
+                Text("Modifier l'achat")
+            },
             text = {
                 Column(
                     verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -1779,9 +2209,17 @@ private fun PurchaseManagementRow(
             confirmButton = {
                 TextButton(
                     onClick = {
-                        val q = quantity.replace(',', '.').toDoubleOrNull()
-                        val price = unitPrice.replace(',', '.').toDoubleOrNull()
-                        val amount = total.replace(',', '.').toDoubleOrNull()
+                        val q = quantity
+                            .replace(',', '.')
+                            .toDoubleOrNull()
+
+                        val price = unitPrice
+                            .replace(',', '.')
+                            .toDoubleOrNull()
+
+                        val amount = total
+                            .replace(',', '.')
+                            .toDoubleOrNull()
 
                         if (
                             product.isBlank() ||
@@ -1799,6 +2237,7 @@ private fun PurchaseManagementRow(
                                     total = amount
                                 )
                             )
+
                             editDialog = false
                         }
                     }
@@ -1807,7 +2246,11 @@ private fun PurchaseManagementRow(
                 }
             },
             dismissButton = {
-                TextButton(onClick = { editDialog = false }) {
+                TextButton(
+                    onClick = {
+                        editDialog = false
+                    }
+                ) {
                     Text("Annuler")
                 }
             }
@@ -1816,8 +2259,12 @@ private fun PurchaseManagementRow(
 
     if (deleteDialog) {
         AlertDialog(
-            onDismissRequest = { deleteDialog = false },
-            title = { Text("Supprimer ce produit ?") },
+            onDismissRequest = {
+                deleteDialog = false
+            },
+            title = {
+                Text("Supprimer ce produit ?")
+            },
             text = {
                 Text(
                     "Seul cet achat sera supprimé. Les autres produits du ticket seront conservés."
@@ -1830,11 +2277,18 @@ private fun PurchaseManagementRow(
                         deleteDialog = false
                     }
                 ) {
-                    Text("Supprimer", color = Color.Red)
+                    Text(
+                        "Supprimer",
+                        color = Color.Red
+                    )
                 }
             },
             dismissButton = {
-                TextButton(onClick = { deleteDialog = false }) {
+                TextButton(
+                    onClick = {
+                        deleteDialog = false
+                    }
+                ) {
                     Text("Annuler")
                 }
             }
@@ -1843,8 +2297,12 @@ private fun PurchaseManagementRow(
 
     if (deleteReceiptDialog) {
         AlertDialog(
-            onDismissRequest = { deleteReceiptDialog = false },
-            title = { Text("Supprimer tout le ticket ?") },
+            onDismissRequest = {
+                deleteReceiptDialog = false
+            },
+            title = {
+                Text("Supprimer tout le ticket ?")
+            },
             text = {
                 Text(
                     "Tous les produits enregistrés avec ce ticket seront supprimés définitivement."
@@ -1857,11 +2315,18 @@ private fun PurchaseManagementRow(
                         deleteReceiptDialog = false
                     }
                 ) {
-                    Text("Supprimer le ticket", color = Color.Red)
+                    Text(
+                        "Supprimer le ticket",
+                        color = Color.Red
+                    )
                 }
             },
             dismissButton = {
-                TextButton(onClick = { deleteReceiptDialog = false }) {
+                TextButton(
+                    onClick = {
+                        deleteReceiptDialog = false
+                    }
+                ) {
                     Text("Annuler")
                 }
             }
@@ -1879,11 +2344,15 @@ private fun PurchaseRowV2(
     card: Color
 ) {
     Card(
-        colors = CardDefaults.cardColors(containerColor = card),
+        colors = CardDefaults.cardColors(
+            containerColor = card
+        ),
         shape = RoundedCornerShape(14.dp)
     ) {
         Row(
-            Modifier.fillMaxWidth().padding(12.dp),
+            Modifier
+                .fillMaxWidth()
+                .padding(12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Icon(
@@ -1937,7 +2406,10 @@ private fun StatsV2(
     fg: Color,
     card: Color
 ) {
-    var period by remember { mutableStateOf("month") }
+    var period by remember {
+        mutableStateOf("month")
+    }
+
     val now = java.util.Calendar.getInstance()
 
     val filteredCurrency = rows.filter {
@@ -1945,6 +2417,7 @@ private fun StatsV2(
     }
 
     val periodRows = filteredCurrency.filter { row ->
+
         val parsed = runCatching {
             java.text.SimpleDateFormat(
                 "yyyy-MM-dd",
@@ -1973,17 +2446,24 @@ private fun StatsV2(
         }
     }
 
-    val total = periodRows.sumOf { it.total }
+    val total = periodRows.sumOf {
+        it.total
+    }
 
     val byProduct = periodRows
         .groupBy { it.product }
-        .mapValues { e -> e.value.sumOf { it.total } }
+        .mapValues { e ->
+            e.value.sumOf { it.total }
+        }
         .entries
         .sortedByDescending { it.value }
         .take(12)
 
     Column(
-        Modifier.fillMaxSize().padding(pad).padding(16.dp),
+        Modifier
+            .fillMaxSize()
+            .padding(pad)
+            .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         Text(
@@ -1994,24 +2474,34 @@ private fun StatsV2(
             color = fg
         )
 
-        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
             FilterChip(
                 selected = period == "week",
-                onClick = { period = "week" },
+                onClick = {
+                    period = "week"
+                },
                 label = {
                     Text(if (ar) "هذا الأسبوع" else "Cette semaine")
                 }
             )
+
             FilterChip(
                 selected = period == "month",
-                onClick = { period = "month" },
+                onClick = {
+                    period = "month"
+                },
                 label = {
                     Text(if (ar) "هذا الشهر" else "Ce mois")
                 }
             )
+
             FilterChip(
                 selected = period == "all",
-                onClick = { period = "all" },
+                onClick = {
+                    period = "all"
+                },
                 label = {
                     Text(if (ar) "الكل" else "Tout")
                 }
@@ -2019,7 +2509,9 @@ private fun StatsV2(
         }
 
         Card(
-            colors = CardDefaults.cardColors(containerColor = card)
+            colors = CardDefaults.cardColors(
+                containerColor = card
+            )
         ) {
             Column(Modifier.padding(16.dp)) {
                 Text(
@@ -2057,10 +2549,17 @@ private fun StatsV2(
         ) {
             items(byProduct) { (name, amount) ->
                 Column(
-                    Modifier.fillMaxWidth().padding(vertical = 4.dp)
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 4.dp)
                 ) {
                     Row {
-                        Text(name, Modifier.weight(1f), color = fg)
+                        Text(
+                            name,
+                            Modifier.weight(1f),
+                            color = fg
+                        )
+
                         Text(
                             "${"%.2f".format(Locale.FRANCE, amount)} ${money.name}",
                             color = fg
@@ -2069,8 +2568,10 @@ private fun StatsV2(
 
                     LinearProgressIndicator(
                         progress = {
-                            if (total > 0) (amount / total).toFloat()
-                            else 0f
+                            if (total > 0)
+                                (amount / total).toFloat()
+                            else
+                                0f
                         },
                         modifier = Modifier.fillMaxWidth(),
                         color = Color(0xFF078A4B)
@@ -2108,7 +2609,10 @@ private fun SettingsV2(
     onStores: () -> Unit
 ) {
     Column(
-        Modifier.fillMaxSize().padding(pad).padding(16.dp),
+        Modifier
+            .fillMaxSize()
+            .padding(pad)
+            .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         Text(
@@ -2118,9 +2622,10 @@ private fun SettingsV2(
             color = fg
         )
 
-        // Accès au répertoire permanent des magasins
         Card(
-            colors = CardDefaults.cardColors(containerColor = card)
+            colors = CardDefaults.cardColors(
+                containerColor = card
+            )
         ) {
             Column(Modifier.padding(14.dp)) {
                 Text(
@@ -2138,6 +2643,7 @@ private fun SettingsV2(
                 ) {
                     Icon(Icons.Default.Store, null)
                     Spacer(Modifier.width(8.dp))
+
                     Text(
                         if (ar) "دليل المتاجر"
                         else "Répertoire des magasins"
@@ -2147,7 +2653,9 @@ private fun SettingsV2(
         }
 
         Card(
-            colors = CardDefaults.cardColors(containerColor = card)
+            colors = CardDefaults.cardColors(
+                containerColor = card
+            )
         ) {
             Column(Modifier.padding(14.dp)) {
                 Text(
@@ -2156,19 +2664,27 @@ private fun SettingsV2(
                     color = fg
                 )
 
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     Text(
                         if (dark) "Mode Dark" else "Mode coloré",
                         Modifier.weight(1f),
                         color = fg
                     )
-                    Switch(dark, onDark)
+
+                    Switch(
+                        dark,
+                        onDark
+                    )
                 }
             }
         }
 
         Card(
-            colors = CardDefaults.cardColors(containerColor = card)
+            colors = CardDefaults.cardColors(
+                containerColor = card
+            )
         ) {
             Column(Modifier.padding(14.dp)) {
                 Text(
@@ -2178,19 +2694,29 @@ private fun SettingsV2(
                 )
 
                 Money.values().forEach {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
                         RadioButton(
                             money == it,
-                            { onMoney(it) }
+                            {
+                                onMoney(it)
+                            }
                         )
-                        Text(it.label, color = fg)
+
+                        Text(
+                            it.label,
+                            color = fg
+                        )
                     }
                 }
             }
         }
 
         Card(
-            colors = CardDefaults.cardColors(containerColor = card)
+            colors = CardDefaults.cardColors(
+                containerColor = card
+            )
         ) {
             Column(Modifier.padding(14.dp)) {
                 Text(
@@ -2199,20 +2725,36 @@ private fun SettingsV2(
                     color = fg
                 )
 
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     RadioButton(
                         lang == AppLang.FR,
-                        { onLang(AppLang.FR) }
+                        {
+                            onLang(AppLang.FR)
+                        }
                     )
-                    Text("Français", color = fg)
+
+                    Text(
+                        "Français",
+                        color = fg
+                    )
                 }
 
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     RadioButton(
                         lang == AppLang.AR,
-                        { onLang(AppLang.AR) }
+                        {
+                            onLang(AppLang.AR)
+                        }
                     )
-                    Text("العربية", color = fg)
+
+                    Text(
+                        "العربية",
+                        color = fg
+                    )
                 }
             }
         }
