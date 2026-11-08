@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.Matrix
 import android.net.Uri
 import android.os.Bundle
@@ -168,6 +169,30 @@ private fun MonPanierV2() {
         }
     }
 
+    // Sélection d'un ticket déjà présent dans le téléphone
+    val galleryLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            runCatching {
+                context.contentResolver.openInputStream(uri)?.use { stream ->
+                    BitmapFactory.decodeStream(stream)
+                } ?: error("Impossible de lire cette image")
+            }.onSuccess { bitmap ->
+                if (bitmap != null) {
+                    photo = bitmap
+                    cropMsg = ""
+                    ocrBusy = false
+                    screen = Screen.CROP
+                } else {
+                    notice = "Impossible de lire cette image."
+                }
+            }.onFailure {
+                notice = "Erreur d'importation : ${it.message}"
+            }
+        }
+    }
+
     MaterialTheme(
         colorScheme = if (dark)
             darkColorScheme(
@@ -244,15 +269,18 @@ private fun MonPanierV2() {
                 )
 
                 Screen.SCAN -> ScannerScreen(
-                    pad,
-                    isAr,
-                    fg,
-                    green,
+                    pad = pad,
+                    ar = isAr,
+                    fg = fg,
+                    green = green,
                     onPhoto = { bmp ->
                         photo = bmp
                         cropMsg = ""
                         ocrBusy = false
                         screen = Screen.CROP
+                    },
+                    onGallery = {
+                        galleryLauncher.launch("image/*")
                     }
                 )
 
@@ -641,13 +669,16 @@ private fun SmallMetric(
     }
 }
 
+/* SCANNER + IMPORTATION DEPUIS LA GALERIE */
+
 @Composable
 private fun ScannerScreen(
     pad: PaddingValues,
     ar: Boolean,
     fg: Color,
     green: Color,
-    onPhoto: (Bitmap) -> Unit
+    onPhoto: (Bitmap) -> Unit,
+    onGallery: () -> Unit
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -682,12 +713,39 @@ private fun ScannerScreen(
             color = fg
         )
 
+        Button(
+            onClick = onGallery,
+            modifier = Modifier.fillMaxWidth().height(54.dp)
+        ) {
+            Icon(Icons.Default.Image, null)
+            Spacer(Modifier.width(8.dp))
+            Text(
+                if (ar)
+                    "اختيار إيصال من الهاتف"
+                else
+                    "Importer un ticket depuis le téléphone"
+            )
+        }
+
+        Text(
+            if (ar)
+                "يمكنك اختيار صورة محفوظة مسبقاً في هاتفك."
+            else
+                "Sélectionne une image de ticket déjà enregistrée dans ton téléphone.",
+            color = fg.copy(alpha = .7f)
+        )
+
+        HorizontalDivider()
+
         if (!permission) {
             Text(
-                if (ar) "يلزم السماح باستعمال الكاميرا"
-                else "L'accès à la caméra est nécessaire.",
+                if (ar)
+                    "يلزم السماح باستعمال الكاميرا"
+                else
+                    "L'accès à la caméra est nécessaire pour scanner un nouveau ticket.",
                 color = fg
             )
+
             Button(onClick = {
                 request.launch(Manifest.permission.CAMERA)
             }) {
@@ -1387,8 +1445,6 @@ private fun HistoryV2(
         }
     }
 }
-
-/* LIGNE D'ACHAT AVEC MENU D'ACTIONS */
 
 @Composable
 private fun PurchaseManagementRow(
