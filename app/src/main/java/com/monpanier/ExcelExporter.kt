@@ -13,19 +13,19 @@ object ExcelExporter {
             entry("_rels/.rels", """<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>""")
             entry("xl/workbook.xml", """<?xml version="1.0" encoding="UTF-8"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="Achats" sheetId="1" r:id="rId1"/><sheet name="Statistiques" sheetId="2" r:id="rId2"/></sheets></workbook>""")
             entry("xl/_rels/workbook.xml.rels", """<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet2.xml"/></Relationships>""")
-            fun esc(s: String) = s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace(""", "&quot;").replace("'", "&apos;")
+            fun esc(s: String) = s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\"", "&quot;").replace("'", "&apos;")
             val headers = listOf("Date", "Magasin", "Produit", "Quantité", "Prix unitaire", "Total", "Devise", "Ticket")
             val xmlRows = buildString {
-                append("<row r="1">")
-                headers.forEachIndexed { i, h -> append("<c r="${col(i+1)}1" t="inlineStr"><is><t>${esc(h)}</t></is></c>") }
+                append("<row r=\"1\">")
+                headers.forEachIndexed { i, h -> append("<c r=\"${col(i+1)}1\" t=\"inlineStr\"><is><t>${esc(h)}</t></is></c>") }
                 append("</row>")
                 rows.forEachIndexed { idx, p ->
-                    val r = idx + 2; append("<row r="$r">")
+                    val r = idx + 2; append("<row r=\"$r\">")
                     val vals = listOf(p.receiptDate, p.store, p.product, p.quantity.toString(), p.unitPrice.toString(), p.total.toString(), p.currency, p.receiptId)
                     vals.forEachIndexed { i, v ->
                         val ref = "${col(i+1)}$r"
-                        if (i == 3 || i == 4 || i == 5) append("<c r="$ref"><v>${esc(v)}</v></c>")
-                        else append("<c r="$ref" t="inlineStr"><is><t>${esc(v)}</t></is></c>")
+                        if (i == 3 || i == 4 || i == 5) append("<c r=\"$ref\"><v>${esc(v)}</v></c>")
+                        else append("<c r=\"$ref\" t=\"inlineStr\"><is><t>${esc(v)}</t></is></c>")
                     }
                     append("</row>")
                 }
