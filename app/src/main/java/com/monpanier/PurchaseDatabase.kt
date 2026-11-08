@@ -33,6 +33,17 @@ data class StoreEntity(
     val name: String
 )
 
+/* Budget mensuel */
+@Entity(tableName = "monthly_budgets")
+data class MonthlyBudgetEntity(
+    @PrimaryKey
+    val month: String, // Format yyyy-MM
+
+    val amount: Double,
+
+    val currency: String
+)
+
 @Dao
 interface PurchaseDao {
 
@@ -80,11 +91,61 @@ interface PurchaseDao {
 
     @Query("DELETE FROM stores WHERE id = :storeId")
     suspend fun deleteStore(storeId: Long)
+
+    // Gestion des budgets mensuels
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun saveBudget(budget: MonthlyBudgetEntity)
+
+    @Query("""
+        SELECT * FROM monthly_budgets
+        WHERE month = :month
+        LIMIT 1
+    """)
+    fun observeBudget(month: String): Flow<MonthlyBudgetEntity?>
+
+    @Query("""
+        SELECT * FROM monthly_budgets
+        ORDER BY month DESC
+    """)
+    fun observeAllBudgets(): Flow<List<MonthlyBudgetEntity>>
+
+    @Query("""
+        SELECT * FROM monthly_budgets
+        WHERE month = :month
+        LIMIT 1
+    """)
+    suspend fun getBudget(month: String): MonthlyBudgetEntity?
+
+    @Query("""
+        DELETE FROM monthly_budgets
+        WHERE month = :month
+    """)
+    suspend fun deleteBudget(month: String)
+
+    // Total des achats pour un mois et une devise
+
+    @Query("""
+        SELECT COALESCE(SUM(total), 0.0)
+        FROM purchases
+        WHERE receiptDate >= :startDate
+        AND receiptDate < :endDate
+        AND currency = :currency
+    """)
+    fun observeMonthlyExpenses(
+        startDate: String,
+        endDate: String,
+        currency: String
+    ): Flow<Double>
 }
 
 @Database(
-    entities = [PurchaseEntity::class, StoreEntity::class],
-    version = 3,
+    entities = [
+        PurchaseEntity::class,
+        StoreEntity::class,
+        MonthlyBudgetEntity::class
+    ],
+    version = 4,
     exportSchema = false
 )
 abstract class PurchaseDatabase : RoomDatabase() {
@@ -119,12 +180,25 @@ abstract class PurchaseDatabase : RoomDatabase() {
                     ON stores(name)
                 """)
 
-                // Récupération des magasins déjà présents dans les tickets
                 db.execSQL("""
                     INSERT OR IGNORE INTO stores(name)
                     SELECT DISTINCT TRIM(store)
                     FROM purchases
                     WHERE TRIM(store) <> ''
+                """)
+            }
+        }
+
+        // Migration 3 vers 4 : création des budgets mensuels
+        private val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS monthly_budgets (
+                        month TEXT NOT NULL PRIMARY KEY,
+                        amount REAL NOT NULL,
+                        currency TEXT NOT NULL
+                    )
                 """)
             }
         }
@@ -136,7 +210,11 @@ abstract class PurchaseDatabase : RoomDatabase() {
                     PurchaseDatabase::class.java,
                     "mon_panier.db"
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
+                    .addMigrations(
+                        MIGRATION_1_2,
+                        MIGRATION_2_3,
+                        MIGRATION_3_4
+                    )
                     .build()
                     .also { INSTANCE = it }
             }
