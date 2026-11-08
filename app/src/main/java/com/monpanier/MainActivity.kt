@@ -37,3 +37,354 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.content.ContextCompat
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.google.mlkit.vision.common.InputImage
+import com.google.mlkit.vision.text.TextRecognition
+import com.google.mlkit.vision.text.latin.TextRecognizerOptions
+import kotlinx.coroutines.launch
+import java.util.concurrent.Executors
+import kotlin.math.abs
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+
+private enum class Screen { HOME, SCAN, CROP, REVIEW, HISTORY, STATS, PRICES, BASKET, SETTINGS }
+private enum class AppLang { FR, AR }
+enum class Money(val label: String) { DZD("DZD"), CAD("CAD") }
+private data class Draft(val product: String, val quantity: String, val unitPrice: String, val total: String)
+
+class MainActivity : ComponentActivity() {
+    override fun onCreate(savedInstanceState: Bundle?) { super.onCreate(savedInstanceState); setContent { MonPanierV2() } }
+}
+
+@Composable
+private fun MonPanierV2() {
+    val context = LocalContext.current
+    val dao = remember { PurchaseDatabase.get(context).purchaseDao() }
+    val purchases by dao.observeAll().collectAsState(initial = emptyList())
+    val prefs = remember { context.getSharedPreferences("settings", Context.MODE_PRIVATE) }
+    var dark by remember { mutableStateOf(prefs.getBoolean("dark", false)) }
+    var lang by remember { mutableStateOf(if (prefs.getString("lang", "FR") == "AR") AppLang.AR else AppLang.FR) }
+    var money by remember { mutableStateOf(if (prefs.getString("money", "DZD") == "CAD") Money.CAD else Money.DZD) }
+    var screen by remember { mutableStateOf(Screen.HOME) }
+    var ocrText by remember { mutableStateOf("") }
+    var store by remember { mutableStateOf("") }
+    var drafts by remember { mutableStateOf(listOf<Draft>()) }
+    var notice by remember { mutableStateOf("") }
+    var photo by remember { mutableStateOf<Bitmap?>(null) }
+    var ocrBusy by remember { mutableStateOf(false) }
+    var cropMsg by remember { mutableStateOf("") }
+    val snackbar = remember { SnackbarHostState() }
+    LaunchedEffect(notice) { if (notice.isNotBlank()) { snackbar.showSnackbar(notice); notice = "" } }
+    val scope = rememberCoroutineScope()
+    val green = if (dark) Color(0xFF70D9A0) else Color(0xFF078A4B)
+    val bg = if (dark) Color(0xFF101713) else Color(0xFFF4F8F5)
+    val card = if (dark) Color(0xFF1C2922) else Color.White
+    val fg = if (dark) Color(0xFFEAF4ED) else Color(0xFF17221B)
+    val isAr = lang == AppLang.AR
+    val currencyCode = money.name
+    val total = purchases.filter { it.currency == currencyCode }.sumOf { it.total }
+    val createXlsx = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")) { uri: Uri? ->
+        if (uri != null) scope.launch { runCatching { context.contentResolver.openOutputStream(uri)?.use { ExcelExporter.export(purchases, it) } ?: error("Impossible d'ouvrir le fichier") }.onSuccess { notice = if (isAr) "تم تصدير ملف Excel" else "Fichier Excel exporté" }.onFailure { notice = "Erreur export : ${it.message}" } }
+    }
+
+    MaterialTheme(colorScheme = if (dark) darkColorScheme(primary=green, background=bg, surface=card) else lightColorScheme(primary=green, background=bg, surface=card)) {
+        Scaffold(containerColor = bg, topBar = { TopAppBarV2(isAr, fg, green, { screen = Screen.SETTINGS }) }, bottomBar = {
+            NavigationBar(containerColor = card) {
+                NavItem(screen == Screen.HOME, {screen=Screen.HOME}, Icons.Default.Home, if(isAr) "الرئيسية" else "Accueil")
+                NavItem(screen == Screen.STATS, {screen=Screen.STATS}, Icons.Default.BarChart, if(isAr) "إحصائيات" else "Stats")
+                NavItem(screen == Screen.HISTORY, {screen=Screen.HISTORY}, Icons.Default.ReceiptLong, if(isAr) "السجل" else "Achats")
+                NavItem(screen == Screen.BASKET, {screen=Screen.BASKET}, Icons.Default.ShoppingCart, if(isAr) "السلة" else "Panier")
+                NavItem(screen == Screen.PRICES, {screen=Screen.PRICES}, Icons.Default.ShowChart, if(isAr) "الأسعار" else "Prix")
+                NavItem(screen == Screen.SETTINGS, {screen=Screen.SETTINGS}, Icons.Default.Settings, if(isAr) "إعدادات" else "Réglages")
+            }
+        }, snackbarHost = { SnackbarHost(snackbar) }) { pad ->
+            when(screen) {
+                Screen.HOME -> HomeV2(pad, purchases, money, lang, total, fg, card, {screen=Screen.SCAN}, {screen=Screen.HISTORY})
+                Screen.SCAN -> ScannerScreen(pad, isAr, fg, green, onPhoto = { bmp -> photo = bmp; cropMsg = ""; ocrBusy = false; screen = Screen.CROP })
+                Screen.CROP -> photo?.let { p ->
+                    CropScreen(pad, isAr, fg, green, p, ocrBusy, cropMsg, onConfirm = { cropped ->
+                        ocrBusy = true; cropMsg = ""
+                        runOcr(cropped, onDone = { text, words ->
+                            ocrBusy = false
+                            ocrText = text
+                            val columnsResult = ReceiptParser.parseColumns(words)
+                            val parsedLines = columnsResult ?: ReceiptParser.parse(text)
+                            if (columnsResult == null) notice = if (isAr) "لم يتم العثور على الأعمدة: قراءة بسيطة، تحقق من كل سطر" else "Colonnes Produit / Qté / P.U non détectées : lecture simple, vérifie chaque ligne."
+                            drafts = parsedLines.map { Draft(it.product, fmtQty(it.quantity), "%.2f".format(Locale.US, it.unitPrice), "%.2f".format(Locale.US, it.total)) }
+                            if (drafts.isEmpty()) drafts = listOf(Draft("", "1", "", ""))
+                            photo = null
+                            screen = Screen.REVIEW
+                        }, onFail = { msg -> ocrBusy = false; cropMsg = msg })
+                    }, onRetake = { photo = null; screen = Screen.SCAN })
+                }
+                Screen.REVIEW -> ReviewScreen(pad, isAr, fg, card, store, {store=it}, drafts, { drafts=it }, ocrText, onSave = {
+                    val rid=ReceiptParser.receiptId()
+                    val rows=drafts.mapNotNull { d -> val q=d.quantity.replace(',','.').toDoubleOrNull(); val price=d.unitPrice.replace(',','.').toDoubleOrNull(); val amount=d.total.replace(',','.').toDoubleOrNull(); if(d.product.isBlank() || q==null || price==null || amount==null) null else PurchaseEntity(receiptDate=ReceiptParser.today(),store=store.ifBlank { "Magasin" },product=d.product,quantity=q,unitPrice=price,total=amount,currency=currencyCode,receiptId=rid) }
+                    scope.launch { if(rows.isNotEmpty()) { dao.insertAll(rows); notice=if(isAr) "تم حفظ المشتريات" else "Achats enregistrés"; screen=Screen.HOME } }
+                }, {screen=Screen.SCAN})
+                Screen.HISTORY -> HistoryV2(pad,purchases,money,isAr,fg,card, onExport={ createXlsx.launch("MonPanier-achats.xlsx") })
+                Screen.STATS -> StatsV2(pad,purchases,money,isAr,fg,card)
+                Screen.PRICES -> PriceHistoryScreen(pad,purchases,money,isAr,fg,card)
+                Screen.BASKET -> SmartBasketScreen(pad,purchases,money,isAr,fg,card)
+                Screen.SETTINGS -> SettingsV2(pad,dark,{ dark=it; prefs.edit().putBoolean("dark",it).apply() },money,{money=it;prefs.edit().putString("money",it.name).apply()},lang,{lang=it;prefs.edit().putString("lang",it.name).apply()},isAr,fg,card)
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable private fun TopAppBarV2(ar:Boolean,fg:Color,green:Color,onSettings:()->Unit){ CenterAlignedTopAppBar(title={Text("Mon Panier",fontWeight=FontWeight.Bold,color=fg)},navigationIcon={Icon(Icons.Default.ShoppingCart,null,tint=green,modifier=Modifier.padding(start=14.dp))},actions={IconButton(onClick=onSettings){Icon(Icons.Default.Settings,null,tint=fg)}}) }
+@Composable private fun RowScope.NavItem(selected:Boolean,click:()->Unit,icon:androidx.compose.ui.graphics.vector.ImageVector,label:String){ NavigationBarItem(selected=selected,onClick=click,icon={Icon(icon,null)},label={Text(label)}) }
+
+@Composable private fun HomeV2(pad:PaddingValues,rows:List<PurchaseEntity>,money:Money,lang:AppLang,total:Double,fg:Color,card:Color,onScan:()->Unit,onHistory:()->Unit){
+    val ar=lang==AppLang.AR; val symbol=if(money==Money.DZD) "DA" else "CAD"; val scoped=rows.filter{it.currency==money.name}; val sum=scoped.sumOf{it.total}
+    LazyColumn(Modifier.fillMaxSize().padding(pad).padding(16.dp),verticalArrangement=Arrangement.spacedBy(14.dp)){
+        item{Text(if(ar)"مرحباً بك في Mon Panier" else "Bienvenue dans Mon Panier",fontSize=24.sp,fontWeight=FontWeight.Bold,color=fg);Text(if(ar)"تابع مشترياتك ونفقاتك" else "Scanne tes tickets et suis tes dépenses.",color=fg.copy(alpha=.7f))}
+        item{Card(colors=CardDefaults.cardColors(containerColor=Color(0xFF078A4B)),shape=RoundedCornerShape(22.dp)){Column(Modifier.fillMaxWidth().padding(20.dp)){Text(if(ar)"إجمالي المشتريات" else "Total des achats",color=Color.White);Text("${"%.2f".format(Locale.FRANCE,sum)} $symbol",fontSize=30.sp,fontWeight=FontWeight.Bold,color=Color.White);Text("${scoped.size} ${if(ar)"منتج مسجل" else "lignes enregistrées"}",color=Color.White)}}}
+        item{Button(onClick=onScan,modifier=Modifier.fillMaxWidth().height(56.dp)){Icon(Icons.Default.PhotoCamera,null);Spacer(Modifier.width(8.dp));Text(if(ar)"مسح إيصال" else "Scanner un ticket")}}
+        item{Row(horizontalArrangement=Arrangement.spacedBy(10.dp)){SmallMetric(Modifier.weight(1f),if(ar)"المنتجات" else "Articles",scoped.sumOf{it.quantity}.toInt().toString(),card,fg);SmallMetric(Modifier.weight(1f),if(ar)"الإيصالات" else "Tickets",scoped.map{it.receiptId}.distinct().size.toString(),card,fg)}}
+        item{Text(if(ar)"آخر المشتريات" else "Derniers achats",fontWeight=FontWeight.Bold,fontSize=19.sp,color=fg)}
+        items(scoped.take(5)){PurchaseRowV2(it,money,fg,card)}
+        if(rows.isEmpty()) item{Text(if(ar)"لا توجد مشتريات بعد. ابدأ بمسح أول إيصال." else "Aucun achat pour le moment. Scanne ton premier ticket.",color=fg.copy(alpha=.65f))}
+        item{TextButton(onClick=onHistory){Text(if(ar)"عرض السجل الكامل" else "Voir tout l'historique")}}
+    }
+}
+@Composable private fun SmallMetric(modifier:Modifier,label:String,value:String,card:Color,fg:Color){Card(modifier,colors=CardDefaults.cardColors(containerColor=card)){Column(Modifier.padding(14.dp)){Text(value,fontSize=24.sp,fontWeight=FontWeight.Bold,color=fg);Text(label,color=fg.copy(alpha=.7f))}}}
+
+@Composable private fun ScannerScreen(pad:PaddingValues,ar:Boolean,fg:Color,green:Color,onPhoto:(Bitmap)->Unit){
+    val context= LocalContext.current; val lifecycleOwner= LocalLifecycleOwner.current; val executor= remember{Executors.newSingleThreadExecutor()}; var capture by remember{mutableStateOf<ImageCapture?>(null)}; var message by remember{mutableStateOf("")}; var permission by remember{mutableStateOf(ContextCompat.checkSelfPermission(context,Manifest.permission.CAMERA)==PackageManager.PERMISSION_GRANTED)}
+    val request= rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()){permission=it}
+    Column(Modifier.fillMaxSize().padding(pad).padding(14.dp),verticalArrangement=Arrangement.spacedBy(12.dp)){
+        Text(if(ar)"امسح إيصال الشراء" else "Scanner un ticket",fontSize=22.sp,fontWeight=FontWeight.Bold,color=fg)
+        if(!permission){Text(if(ar)"يلزم السماح باستعمال الكاميرا" else "L'accès à la caméra est nécessaire.",color=fg);Button(onClick={request.launch(Manifest.permission.CAMERA)}){Text(if(ar)"السماح" else "Autoriser la caméra")}}
+        else {
+            AndroidView(modifier=Modifier.weight(1f).fillMaxWidth(),factory={ctx->
+                val previewView=PreviewView(ctx); val providerFuture=ProcessCameraProvider.getInstance(ctx)
+                providerFuture.addListener({ val provider=providerFuture.get(); val preview=Preview.Builder().build().also{it.setSurfaceProvider(previewView.surfaceProvider)}; val imageCapture=ImageCapture.Builder().setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY).build(); capture=imageCapture; try{provider.unbindAll();provider.bindToLifecycle(lifecycleOwner,CameraSelector.DEFAULT_BACK_CAMERA,preview,imageCapture)}catch(e:Exception){message=e.localizedMessage?:"Erreur caméra"} },ContextCompat.getMainExecutor(ctx)); previewView
+            })
+            Button(onClick={
+                val cap=capture ?: return@Button
+                message=if(ar)"جارٍ التقاط الصورة…" else "Capture en cours…"
+                cap.takePicture(executor,object:ImageCapture.OnImageCapturedCallback(){
+                    override fun onCaptureSuccess(image:ImageProxy){
+                        val bmp=try{ imageToBitmap(image) }catch(e:Throwable){ null }
+                        image.close()
+                        ContextCompat.getMainExecutor(context).execute{ if(bmp!=null){ onPhoto(bmp) } else { message="Image invalide" } }
+                    }
+                    override fun onError(exception:ImageCaptureException){
+                        ContextCompat.getMainExecutor(context).execute{ message=exception.localizedMessage?:"Erreur de capture" }
+                    }
+                })
+            },modifier=Modifier.fillMaxWidth().height(54.dp)){Icon(Icons.Default.CameraAlt,null);Spacer(Modifier.width(8.dp));Text(if(ar)"التقاط الصورة" else "Prendre la photo")}
+            Text(if(ar)"ضع الإيصال داخل الإطار مع إضاءة جيدة." else "Place le ticket bien à plat, dans un endroit éclairé.",color=fg.copy(alpha=.7f))
+            if(message.isNotBlank()) Text(message,color=green)
+        }
+    }
+}
+
+private fun fmtQty(q: Double): String = if (q % 1.0 == 0.0) q.toLong().toString() else q.toString()
+
+/** Convertit la photo CameraX en Bitmap droit, réduit à 2600 px maximum. */
+private fun imageToBitmap(image: ImageProxy): Bitmap {
+    var bmp = image.toBitmap()
+    val rotation = image.imageInfo.rotationDegrees
+    if (rotation != 0) {
+        val m = Matrix()
+        m.postRotate(rotation.toFloat())
+        bmp = Bitmap.createBitmap(bmp, 0, 0, bmp.width, bmp.height, m, true)
+    }
+    val longSide = maxOf(bmp.width, bmp.height)
+    if (longSide > 2600) {
+        val s = 2600f / longSide
+        bmp = Bitmap.createScaledBitmap(bmp, (bmp.width * s).toInt(), (bmp.height * s).toInt(), true)
+    }
+    return bmp
+}
+
+/** Lit le texte de l'image et renvoie chaque mot avec sa position. */
+private fun runOcr(bitmap: Bitmap, onDone: (String, List<OcrWord>) -> Unit, onFail: (String) -> Unit) {
+    val input = InputImage.fromBitmap(bitmap, 0)
+    TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS).process(input)
+        .addOnSuccessListener { result ->
+            val words = ArrayList<OcrWord>()
+            for (block in result.textBlocks) {
+                for (line in block.lines) {
+                    for (el in line.elements) {
+                        val b = el.boundingBox ?: continue
+                        words.add(OcrWord(el.text, b.left.toFloat(), b.top.toFloat(), b.right.toFloat(), b.bottom.toFloat()))
+                    }
+                }
+            }
+            onDone(result.text, words)
+        }
+        .addOnFailureListener { e -> onFail("OCR : " + (e.localizedMessage ?: "erreur")) }
+}
+
+/** Écran de cadrage : on déplace les coins (ou tout le cadre) avant la lecture du ticket. */
+@Composable private fun CropScreen(pad: PaddingValues, ar: Boolean, fg: Color, green: Color, bitmap: Bitmap, busy: Boolean, message: String, onConfirm: (Bitmap) -> Unit, onRetake: () -> Unit) {
+    val density = LocalDensity.current
+    val handle = with(density) { 40.dp.toPx() }
+    val minSize = with(density) { 60.dp.toPx() }
+    var viewW by remember { mutableStateOf(0f) }
+    var viewH by remember { mutableStateOf(0f) }
+    var cl by remember { mutableStateOf(0f) }
+    var ct by remember { mutableStateOf(0f) }
+    var cr by remember { mutableStateOf(0f) }
+    var cb by remember { mutableStateOf(0f) }
+    var active by remember { mutableStateOf(0) }
+    val scale = if (viewW > 0f && viewH > 0f) minOf(viewW / bitmap.width, viewH / bitmap.height) else 1f
+    val imgW = bitmap.width * scale
+    val imgH = bitmap.height * scale
+    val offX = (viewW - imgW) / 2f
+    val offY = (viewH - imgH) / 2f
+
+    LaunchedEffect(viewW, viewH) {
+        if (viewW > 0f && viewH > 0f) {
+            cl = offX + imgW * 0.03f
+            cr = offX + imgW * 0.97f
+            ct = offY + imgH * 0.03f
+            cb = offY + imgH * 0.97f
+        }
+    }
+
+    Column(Modifier.fillMaxSize().padding(pad).padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Text(if (ar) "اضبط إطار الإيصال" else "Cadrer le ticket", fontSize = 22.sp, fontWeight = FontWeight.Bold, color = fg)
+        Text(if (ar) "حرّك الزوايا لتحيط بجدول المنتجات فقط." else "Glisse les coins pour garder le tableau des produits (de la ligne « Produit » jusqu'au Total).", color = fg.copy(alpha = .7f))
+        Box(
+            Modifier.weight(1f).fillMaxWidth()
+                .onSizeChanged { viewW = it.width.toFloat(); viewH = it.height.toFloat() }
+                .pointerInput(viewW, viewH) {
+                    detectDragGestures(
+                        onDragStart = { p ->
+                            active = when {
+                                abs(p.x - cl) < handle && abs(p.y - ct) < handle -> 1
+                                abs(p.x - cr) < handle && abs(p.y - ct) < handle -> 2
+                                abs(p.x - cl) < handle && abs(p.y - cb) < handle -> 3
+                                abs(p.x - cr) < handle && abs(p.y - cb) < handle -> 4
+                                p.x >= cl && p.x <= cr && p.y >= ct && p.y <= cb -> 5
+                                else -> 0
+                            }
+                        },
+                        onDragEnd = { active = 0 },
+                        onDragCancel = { active = 0 },
+                        onDrag = { change, d ->
+                            change.consume()
+                            val minX = offX
+                            val maxX = offX + imgW
+                            val minY = offY
+                            val maxY = offY + imgH
+                            when (active) {
+                                1 -> { cl = (cl + d.x).coerceIn(minX, cr - minSize); ct = (ct + d.y).coerceIn(minY, cb - minSize) }
+                                2 -> { cr = (cr + d.x).coerceIn(cl + minSize, maxX); ct = (ct + d.y).coerceIn(minY, cb - minSize) }
+                                3 -> { cl = (cl + d.x).coerceIn(minX, cr - minSize); cb = (cb + d.y).coerceIn(ct + minSize, maxY) }
+                                4 -> { cr = (cr + d.x).coerceIn(cl + minSize, maxX); cb = (cb + d.y).coerceIn(ct + minSize, maxY) }
+                                5 -> {
+                                    val w = cr - cl
+                                    val h = cb - ct
+                                    val nl = (cl + d.x).coerceIn(minX, maxX - w)
+                                    val nt = (ct + d.y).coerceIn(minY, maxY - h)
+                                    cl = nl; ct = nt; cr = nl + w; cb = nt + h
+                                }
+                                else -> {}
+                            }
+                        }
+                    )
+                }
+        ) {
+            Image(bitmap = bitmap.asImageBitmap(), contentDescription = null, contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize())
+            Canvas(Modifier.fillMaxSize()) {
+                val dim = Color.Black.copy(alpha = 0.55f)
+                drawRect(dim, Offset(0f, 0f), Size(size.width, ct))
+                drawRect(dim, Offset(0f, cb), Size(size.width, size.height - cb))
+                drawRect(dim, Offset(0f, ct), Size(cl, cb - ct))
+                drawRect(dim, Offset(cr, ct), Size(size.width - cr, cb - ct))
+                drawRect(green, Offset(cl, ct), Size(cr - cl, cb - ct), style = Stroke(width = 3f))
+                drawCircle(green, radius = 16f, center = Offset(cl, ct))
+                drawCircle(green, radius = 16f, center = Offset(cr, ct))
+                drawCircle(green, radius = 16f, center = Offset(cl, cb))
+                drawCircle(green, radius = 16f, center = Offset(cr, cb))
+            }
+        }
+        if (message.isNotBlank()) Text(message, color = Color(0xFFD32F2F))
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(onClick = onRetake, enabled = !busy, modifier = Modifier.weight(1f)) { Text(if (ar) "إعادة التصوير" else "Reprendre") }
+            Button(onClick = {
+                val x = ((cl - offX) / scale).toInt().coerceIn(0, bitmap.width - 1)
+                val y = ((ct - offY) / scale).toInt().coerceIn(0, bitmap.height - 1)
+                val w = ((cr - cl) / scale).toInt().coerceIn(1, bitmap.width - x)
+                val h = ((cb - ct) / scale).toInt().coerceIn(1, bitmap.height - y)
+                onConfirm(Bitmap.createBitmap(bitmap, x, y, w, h))
+            }, enabled = !busy, modifier = Modifier.weight(1f)) { Text(if (busy) (if (ar) "جارٍ القراءة…" else "Lecture…") else (if (ar) "قراءة الإيصال" else "Lire le ticket")) }
+        }
+    }
+}
+
+@Composable private fun ReviewScreen(pad:PaddingValues,ar:Boolean,fg:Color,card:Color,store:String,onStore:(String)->Unit,drafts:List<Draft>,onDrafts:(List<Draft>)->Unit,raw:String,onSave:()->Unit,onRescan:()->Unit){
+    Column(Modifier.fillMaxSize().padding(pad).padding(14.dp),verticalArrangement=Arrangement.spacedBy(10.dp)){
+        Text(if(ar)"تحقق من المنتجات" else "Vérifier les articles",fontSize=22.sp,fontWeight=FontWeight.Bold,color=fg)
+        OutlinedTextField(value=store,onValueChange=onStore,label={Text(if(ar)"المتجر" else "Magasin")},modifier=Modifier.fillMaxWidth(),singleLine=true)
+        Text(if(ar)"صحح المعلومات قبل الحفظ" else "Corrige les lignes détectées avant l'enregistrement.",color=fg.copy(alpha=.7f))
+        LazyColumn(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(8.dp)){
+            items(drafts.size){i-> val d=drafts[i]; Card(colors=CardDefaults.cardColors(containerColor=card)){Column(Modifier.padding(10.dp)){Row(verticalAlignment=Alignment.CenterVertically){OutlinedTextField(d.product,{v->onDrafts(drafts.toMutableList().also{it[i]=d.copy(product=v)})},label={Text(if(ar)"المنتج" else "Produit")},modifier=Modifier.weight(1f),singleLine=true);IconButton(onClick={onDrafts(drafts.toMutableList().also{it.removeAt(i)})}){Icon(Icons.Default.Delete,if(ar)"حذف" else "Supprimer ce produit",tint=Color(0xFFD32F2F))}};Row(horizontalArrangement=Arrangement.spacedBy(6.dp)){OutlinedTextField(d.quantity,{v->onDrafts(drafts.toMutableList().also{it[i]=d.copy(quantity=v)})},label={Text(if(ar)"الكمية" else "Qté")},modifier=Modifier.weight(1f),singleLine=true);OutlinedTextField(d.unitPrice,{v->onDrafts(drafts.toMutableList().also{it[i]=d.copy(unitPrice=v)})},label={Text(if(ar)"سعر الوحدة" else "Prix unit.")},modifier=Modifier.weight(1f),singleLine=true);OutlinedTextField(d.total,{v->onDrafts(drafts.toMutableList().also{it[i]=d.copy(total=v)})},label={Text(if(ar)"المجموع" else "Total")},modifier=Modifier.weight(1f),singleLine=true)}}} }
+        }
+        Row(horizontalArrangement=Arrangement.spacedBy(8.dp)){OutlinedButton(onClick=onRescan,modifier=Modifier.weight(1f)){Text(if(ar)"إعادة المسح" else "Recommencer")};Button(onClick=onSave,modifier=Modifier.weight(1f)){Text(if(ar)"حفظ" else "Enregistrer")}}
+        Text(if(ar)"ملاحظة: تحقق دائماً من نتائج التعرف الضوئي." else "Important : l'OCR peut se tromper. Vérifie chaque ligne avant de sauvegarder.",fontSize=11.sp,color=fg.copy(alpha=.6f))
+    }
+}
+
+@Composable private fun HistoryV2(pad:PaddingValues,rows:List<PurchaseEntity>,money:Money,ar:Boolean,fg:Color,card:Color,onExport:()->Unit){val filtered=rows.filter{it.currency==money.name};Column(Modifier.fillMaxSize().padding(pad).padding(14.dp)){Row(verticalAlignment=Alignment.CenterVertically){Text(if(ar)"سجل المشتريات" else "Historique des achats",Modifier.weight(1f),fontSize=21.sp,fontWeight=FontWeight.Bold,color=fg);Button(onClick=onExport){Icon(Icons.Default.FileDownload,null);Spacer(Modifier.width(4.dp));Text("Excel")}};Spacer(Modifier.height(10.dp));LazyColumn(verticalArrangement=Arrangement.spacedBy(8.dp)){items(filtered){PurchaseRowV2(it,money,fg,card)}};if(filtered.isEmpty())Text(if(ar)"لا توجد بيانات للتصدير" else "Aucun achat dans cette devise.",color=fg.copy(alpha=.7f))}}
+@Composable private fun PurchaseRowV2(p:PurchaseEntity,money:Money,fg:Color,card:Color){Card(colors=CardDefaults.cardColors(containerColor=card),shape=RoundedCornerShape(14.dp)){Row(Modifier.fillMaxWidth().padding(12.dp),verticalAlignment=Alignment.CenterVertically){Icon(Icons.Default.ShoppingBag,null,tint=Color(0xFF078A4B));Spacer(Modifier.width(10.dp));Column(Modifier.weight(1f)){Text(p.product,fontWeight=FontWeight.SemiBold,color=fg);Text("${p.store} • ${p.receiptDate} • Qté ${p.quantity}",fontSize=11.sp,color=fg.copy(alpha=.65f))};Text("${"%.2f".format(Locale.FRANCE,p.total)} ${p.currency}",fontWeight=FontWeight.Bold,color=fg)}}}
+
+@Composable private fun StatsV2(pad:PaddingValues,rows:List<PurchaseEntity>,money:Money,ar:Boolean,fg:Color,card:Color){
+    var period by remember { mutableStateOf("month") }
+    val now = java.util.Calendar.getInstance()
+    val filteredCurrency = rows.filter { it.currency == money.name }
+    val periodRows = filteredCurrency.filter { row ->
+        val parsed = runCatching { java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).parse(row.receiptDate) }.getOrNull() ?: return@filter false
+        val c = java.util.Calendar.getInstance().apply { time = parsed }
+        when (period) {
+            "week" -> c.get(java.util.Calendar.YEAR) == now.get(java.util.Calendar.YEAR) && c.get(java.util.Calendar.WEEK_OF_YEAR) == now.get(java.util.Calendar.WEEK_OF_YEAR)
+            "month" -> c.get(java.util.Calendar.YEAR) == now.get(java.util.Calendar.YEAR) && c.get(java.util.Calendar.MONTH) == now.get(java.util.Calendar.MONTH)
+            else -> true
+        }
+    }
+    val total = periodRows.sumOf { it.total }
+    val byProduct = periodRows.groupBy { it.product }.mapValues { e -> e.value.sumOf { it.total } }.entries.sortedByDescending { it.value }.take(12)
+    Column(Modifier.fillMaxSize().padding(pad).padding(16.dp), verticalArrangement=Arrangement.spacedBy(12.dp)) {
+        Text(if(ar) "إحصائيات المصاريف" else "Statistiques des dépenses", fontSize=23.sp, fontWeight=FontWeight.Bold, color=fg)
+        Row(horizontalArrangement=Arrangement.spacedBy(6.dp)) {
+            FilterChip(selected=period=="week", onClick={period="week"}, label={Text(if(ar)"هذا الأسبوع" else "Cette semaine")})
+            FilterChip(selected=period=="month", onClick={period="month"}, label={Text(if(ar)"هذا الشهر" else "Ce mois")})
+            FilterChip(selected=period=="all", onClick={period="all"}, label={Text(if(ar)"الكل" else "Tout")})
+        }
+        Card(colors=CardDefaults.cardColors(containerColor=card)) {
+            Column(Modifier.padding(16.dp)) {
+                Text(if(ar) "إجمالي المصاريف" else "Montant des achats", color=fg.copy(alpha=.7f))
+                Text("${"%.2f".format(Locale.FRANCE,total)} ${money.name}", fontSize=28.sp, fontWeight=FontWeight.Bold, color=Color(0xFF078A4B))
+                Text("${periodRows.sumOf { it.quantity }} ${if(ar)"منتج" else "articles"} • ${periodRows.map { it.receiptId }.distinct().size} tickets", color=fg.copy(alpha=.75f))
+            }
+        }
+        Text(if(ar) "المصاريف حسب المنتج" else "Dépenses par produit", fontWeight=FontWeight.Bold, color=fg)
+        LazyColumn(Modifier.weight(1f), verticalArrangement=Arrangement.spacedBy(8.dp)) {
+            items(byProduct) { (name, amount) ->
+                Column(Modifier.fillMaxWidth().padding(vertical=4.dp)) {
+                    Row { Text(name, Modifier.weight(1f), color=fg); Text("${"%.2f".format(Locale.FRANCE,amount)} ${money.name}", color=fg) }
+                    LinearProgressIndicator(progress={if(total>0)(amount/total).toFloat() else 0f}, modifier=Modifier.fillMaxWidth(), color=Color(0xFF078A4B))
+                }
+            }
+            if (periodRows.isEmpty()) item { Text(if(ar)"لا توجد مشتريات لهذه الفترة" else "Aucun achat pour cette période.", color=fg.copy(alpha=.7f)) }
+        }
+    }
+}
+
+@Composable private fun SettingsV2(pad:PaddingValues,dark:Boolean,onDark:(Boolean)->Unit,money:Money,onMoney:(Money)->Unit,lang:AppLang,onLang:(AppLang)->Unit,ar:Boolean,fg:Color,card:Color){Column(Modifier.fillMaxSize().padding(pad).padding(16.dp),verticalArrangement=Arrangement.spacedBy(12.dp)){Text(if(ar)"الإعدادات" else "Paramètres",fontSize=23.sp,fontWeight=FontWeight.Bold,color=fg);Card(colors=CardDefaults.cardColors(containerColor=card)){Column(Modifier.padding(14.dp)){Text(if(ar)"المظهر" else "Apparence",fontWeight=FontWeight.Bold,color=fg);Row(verticalAlignment=Alignment.CenterVertically){Text(if(dark)"Mode Dark" else "Mode coloré",Modifier.weight(1f),color=fg);Switch(dark,onDark)}}};Card(colors=CardDefaults.cardColors(containerColor=card)){Column(Modifier.padding(14.dp)){Text(if(ar)"العملة" else "Monnaie",fontWeight=FontWeight.Bold,color=fg);Money.values().forEach{Row(verticalAlignment=Alignment.CenterVertically){RadioButton(money==it,{onMoney(it)});Text(it.label,color=fg)}}}};Card(colors=CardDefaults.cardColors(containerColor=card)){Column(Modifier.padding(14.dp)){Text(if(ar)"اللغة" else "Langue",fontWeight=FontWeight.Bold,color=fg);Row(verticalAlignment=Alignment.CenterVertically){RadioButton(lang==AppLang.FR,{onLang(AppLang.FR)});Text("Français",color=fg)};Row(verticalAlignment=Alignment.CenterVertically){RadioButton(lang==AppLang.AR,{onLang(AppLang.AR)});Text("العربية",color=fg)}}};Text(if(ar)"الإصدار 2.0.0" else "Mon Panier • Version 2.0.0",color=fg.copy(alpha=.6f),fontSize=12.sp)}}
