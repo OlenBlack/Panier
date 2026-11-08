@@ -1,3 +1,4 @@
+
 package com.monpanier.app
 
 import android.Manifest
@@ -70,7 +71,7 @@ import java.util.Locale
 
 private enum class Screen {
     HOME, SCAN, CROP, REVIEW, HISTORY,
-    STATS, PRICES, BASKET, SETTINGS, STORES
+    STATS, PRICES, BASKET, SETTINGS, STORES, BUDGET
 }
 
 private enum class AppLang { FR, AR }
@@ -113,7 +114,7 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-/* ÉCRAN DE DÉMARRAGE BY OLENBLACK */
+/* ÉCRAN DE DÉMARRAGE */
 
 @Composable
 private fun SplashScreen() {
@@ -143,6 +144,10 @@ private fun MonPanierV2() {
 
     // Répertoire permanent des magasins
     val stores by dao.observeStores()
+        .collectAsState(initial = emptyList())
+
+    // Budgets mensuels
+    val budgets by dao.observeBudgets()
         .collectAsState(initial = emptyList())
 
     val prefs = remember {
@@ -472,6 +477,7 @@ private fun MonPanierV2() {
                         }
                     )
                 }
+
                 Screen.REVIEW -> ReviewScreen(
                     pad = pad,
                     ar = isAr,
@@ -644,6 +650,9 @@ private fun MonPanierV2() {
                     card = card,
                     onStores = {
                         screen = Screen.STORES
+                    },
+                    onBudget = {
+                        screen = Screen.BUDGET
                     }
                 )
 
@@ -656,6 +665,15 @@ private fun MonPanierV2() {
                     onBack = {
                         screen = Screen.SETTINGS
                     }
+                )
+
+                Screen.BUDGET -> BudgetScreen(
+                    purchases = purchases,
+                    budgets = budgets,
+                    dao = dao,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(pad)
                 )
             }
         }
@@ -2606,7 +2624,8 @@ private fun SettingsV2(
     ar: Boolean,
     fg: Color,
     card: Color,
-    onStores: () -> Unit
+    onStores: () -> Unit,
+    onBudget: () -> Unit
 ) {
     Column(
         Modifier
@@ -2621,6 +2640,8 @@ private fun SettingsV2(
             fontWeight = FontWeight.Bold,
             color = fg
         )
+
+        /* GESTION DES MAGASINS */
 
         Card(
             colors = CardDefaults.cardColors(
@@ -2652,6 +2673,54 @@ private fun SettingsV2(
             }
         }
 
+        /* NOUVEAU MODULE BUDGET */
+
+        Card(
+            colors = CardDefaults.cardColors(
+                containerColor = card
+            )
+        ) {
+            Column(Modifier.padding(14.dp)) {
+                Text(
+                    if (ar) "الميزانية الشهرية"
+                    else "Budget mensuel",
+                    fontWeight = FontWeight.Bold,
+                    color = fg
+                )
+
+                Spacer(Modifier.height(8.dp))
+
+                Text(
+                    if (ar)
+                        "حدد ميزانيتك وتابع مصاريفك الشهرية"
+                    else
+                        "Définis ton budget et suis tes dépenses chaque mois.",
+                    color = fg.copy(alpha = 0.7f)
+                )
+
+                Spacer(Modifier.height(8.dp))
+
+                Button(
+                    onClick = onBudget,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(
+                        Icons.Default.AccountBalanceWallet,
+                        null
+                    )
+
+                    Spacer(Modifier.width(8.dp))
+
+                    Text(
+                        if (ar) "إدارة الميزانية"
+                        else "Gérer mon budget"
+                    )
+                }
+            }
+        }
+
+        /* APPARENCE */
+
         Card(
             colors = CardDefaults.cardColors(
                 containerColor = card
@@ -2680,6 +2749,8 @@ private fun SettingsV2(
                 }
             }
         }
+
+        /* DEVISE */
 
         Card(
             colors = CardDefaults.cardColors(
@@ -2712,6 +2783,8 @@ private fun SettingsV2(
                 }
             }
         }
+
+        /* LANGUE */
 
         Card(
             colors = CardDefaults.cardColors(
