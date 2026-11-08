@@ -1,4 +1,3 @@
-
 package com.monpanier.app
 
 import android.content.Context
@@ -11,7 +10,6 @@ import kotlinx.coroutines.flow.Flow
 data class PurchaseEntity(
     @PrimaryKey(autoGenerate = true)
     val id: Long = 0,
-
     val receiptDate: String,
     val store: String,
     val product: String,
@@ -19,16 +17,25 @@ data class PurchaseEntity(
     val unitPrice: Double,
     val total: Double,
     val currency: String,
-
     @ColumnInfo(defaultValue = "''")
     val ticketNumber: String = "",
-
     val receiptId: String
+)
+
+@Entity(
+    tableName = "stores",
+    indices = [Index(value = ["name"], unique = true)]
+)
+data class StoreEntity(
+    @PrimaryKey(autoGenerate = true)
+    val id: Long = 0,
+    val name: String
 )
 
 @Dao
 interface PurchaseDao {
 
+    // Historique des achats
     @Query("SELECT * FROM purchases ORDER BY id DESC")
     fun observeAll(): Flow<List<PurchaseEntity>>
 
@@ -41,11 +48,11 @@ interface PurchaseDao {
     @Update
     suspend fun update(item: PurchaseEntity)
 
-    @Query("DELETE FROM purchases WHERE id = :purchaseId")
-    suspend fun deletePurchase(purchaseId: Long)
-
     @Query("DELETE FROM purchases WHERE receiptId = :receiptId")
     suspend fun deleteReceipt(receiptId: String)
+
+    @Query("DELETE FROM purchases WHERE id = :purchaseId")
+    suspend fun deletePurchase(purchaseId: Long)
 
     @Query("SELECT * FROM purchases")
     suspend fun getAll(): List<PurchaseEntity>
@@ -59,11 +66,25 @@ interface PurchaseDao {
         ORDER BY id DESC
     """)
     suspend fun searchByTicketNumber(number: String): List<PurchaseEntity>
+
+
+    // Répertoire permanent des magasins
+    @Query("SELECT * FROM stores ORDER BY name COLLATE NOCASE")
+    fun observeStores(): Flow<List<StoreEntity>>
+
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertStoreIfAbsent(store: StoreEntity): Long
+
+    @Update
+    suspend fun updateStore(store: StoreEntity)
+
+    @Query("DELETE FROM stores WHERE id = :storeId")
+    suspend fun deleteStore(storeId: Long)
 }
 
 @Database(
-    entities = [PurchaseEntity::class],
-    version = 2,
+    entities = [PurchaseEntity::class, StoreEntity::class],
+    version = 3,
     exportSchema = false
 )
 abstract class PurchaseDatabase : RoomDatabase() {
@@ -83,6 +104,31 @@ abstract class PurchaseDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS stores (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        name TEXT NOT NULL
+                    )
+                """)
+
+                db.execSQL("""
+                    CREATE UNIQUE INDEX IF NOT EXISTS index_stores_name
+                    ON stores(name)
+                """)
+
+                // Récupérer les magasins déjà présents dans les anciens tickets
+                db.execSQL("""
+                    INSERT OR IGNORE INTO stores(name)
+                    SELECT DISTINCT TRIM(store)
+                    FROM purchases
+                    WHERE TRIM(store) <> ''
+                """)
+            }
+        }
+
         fun get(context: Context): PurchaseDatabase =
             INSTANCE ?: synchronized(this) {
                 INSTANCE ?: Room.databaseBuilder(
@@ -90,7 +136,7 @@ abstract class PurchaseDatabase : RoomDatabase() {
                     PurchaseDatabase::class.java,
                     "mon_panier.db"
                 )
-                    .addMigrations(MIGRATION_1_2)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
                     .build()
                     .also { INSTANCE = it }
             }
