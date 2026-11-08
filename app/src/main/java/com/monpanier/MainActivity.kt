@@ -1,4 +1,3 @@
-
 package com.monpanier.app
 
 import android.Manifest
@@ -71,7 +70,8 @@ import java.util.Locale
 
 private enum class Screen {
     HOME, SCAN, CROP, REVIEW, HISTORY,
-    STATS, PRICES, BASKET, SETTINGS, STORES, BUDGET
+    STATS, PRICES, COMPARISON,
+    BASKET, SETTINGS, STORES, BUDGET
 }
 
 private enum class AppLang { FR, AR }
@@ -142,11 +142,9 @@ private fun MonPanierV2() {
     val purchases by dao.observeAll()
         .collectAsState(initial = emptyList())
 
-    // Répertoire permanent des magasins
     val stores by dao.observeStores()
         .collectAsState(initial = emptyList())
 
-    // Budgets mensuels
     val budgets by dao.observeBudgets()
         .collectAsState(initial = emptyList())
 
@@ -354,6 +352,13 @@ private fun MonPanierV2() {
                         { screen = Screen.PRICES },
                         Icons.Default.ShowChart,
                         if (isAr) "الأسعار" else "Prix"
+                    )
+
+                    NavItem(
+                        screen == Screen.COMPARISON,
+                        { screen = Screen.COMPARISON },
+                        Icons.Default.CompareArrows,
+                        if (isAr) "مقارنة" else "Comparer"
                     )
 
                     NavItem(
@@ -613,6 +618,13 @@ private fun MonPanierV2() {
                     card
                 )
 
+                Screen.COMPARISON -> PriceComparisonScreen(
+                    purchases = purchases,
+                    onBack = {
+                        screen = Screen.HOME
+                    }
+                )
+
                 Screen.BASKET -> SmartBasketScreen(
                     pad,
                     purchases,
@@ -653,6 +665,9 @@ private fun MonPanierV2() {
                     },
                     onBudget = {
                         screen = Screen.BUDGET
+                    },
+                    onComparison = {
+                        screen = Screen.COMPARISON
                     }
                 )
 
@@ -2625,7 +2640,8 @@ private fun SettingsV2(
     fg: Color,
     card: Color,
     onStores: () -> Unit,
-    onBudget: () -> Unit
+    onBudget: () -> Unit,
+    onComparison: () -> Unit
 ) {
     Column(
         Modifier
@@ -2673,7 +2689,7 @@ private fun SettingsV2(
             }
         }
 
-        /* NOUVEAU MODULE BUDGET */
+        /* BUDGET MENSUEL */
 
         Card(
             colors = CardDefaults.cardColors(
@@ -2714,6 +2730,52 @@ private fun SettingsV2(
                     Text(
                         if (ar) "إدارة الميزانية"
                         else "Gérer mon budget"
+                    )
+                }
+            }
+        }
+
+        /* COMPARATEUR DE PRIX */
+
+        Card(
+            colors = CardDefaults.cardColors(
+                containerColor = card
+            )
+        ) {
+            Column(Modifier.padding(14.dp)) {
+                Text(
+                    if (ar) "مقارنة الأسعار"
+                    else "Comparateur de prix",
+                    fontWeight = FontWeight.Bold,
+                    color = fg
+                )
+
+                Spacer(Modifier.height(8.dp))
+
+                Text(
+                    if (ar)
+                        "قارن أسعار المنتجات بين المتاجر المختلفة"
+                    else
+                        "Compare les prix d'un même produit entre les différents magasins.",
+                    color = fg.copy(alpha = 0.7f)
+                )
+
+                Spacer(Modifier.height(8.dp))
+
+                Button(
+                    onClick = onComparison,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(
+                        Icons.Default.CompareArrows,
+                        null
+                    )
+
+                    Spacer(Modifier.width(8.dp))
+
+                    Text(
+                        if (ar) "مقارنة الأسعار"
+                        else "Ouvrir le comparateur"
                     )
                 }
             }
