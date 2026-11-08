@@ -1,3 +1,4 @@
+
 package com.monpanier.app
 
 import android.content.Context
@@ -35,7 +36,6 @@ data class StoreEntity(
 @Dao
 interface PurchaseDao {
 
-    // Historique des achats
     @Query("SELECT * FROM purchases ORDER BY id DESC")
     fun observeAll(): Flow<List<PurchaseEntity>>
 
@@ -67,8 +67,8 @@ interface PurchaseDao {
     """)
     suspend fun searchByTicketNumber(number: String): List<PurchaseEntity>
 
-
     // Répertoire permanent des magasins
+
     @Query("SELECT * FROM stores ORDER BY name COLLATE NOCASE")
     fun observeStores(): Flow<List<StoreEntity>>
 
@@ -119,7 +119,7 @@ abstract class PurchaseDatabase : RoomDatabase() {
                     ON stores(name)
                 """)
 
-                // Récupérer les magasins déjà présents dans les anciens tickets
+                // Récupération des magasins déjà présents dans les tickets
                 db.execSQL("""
                     INSERT OR IGNORE INTO stores(name)
                     SELECT DISTINCT TRIM(store)
