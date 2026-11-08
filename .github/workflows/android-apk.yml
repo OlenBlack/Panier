@@ -31,6 +31,21 @@ jobs:
         with:
           gradle-version: '8.9'
 
+      - name: Vérifier AndroidManifest.xml
+        run: |
+          echo "Branche actuelle :"
+          git branch --show-current
+
+          echo "Fichiers Manifest suivis par Git :"
+          git ls-files | grep -i 'AndroidManifest.xml' || true
+
+          echo "Contenu du dossier app/src/main :"
+          ls -la app/src/main/
+
+          echo "Vérification du chemin exact :"
+          git ls-files --error-unmatch app/src/main/AndroidManifest.xml
+          test -f app/src/main/AndroidManifest.xml
+
       - name: Compiler Mon Panier
         run: gradle --no-daemon :app:assembleDebug
 
@@ -41,3 +56,4 @@ jobs:
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 14
+
