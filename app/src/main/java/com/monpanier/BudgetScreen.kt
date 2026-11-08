@@ -2,56 +2,49 @@
 package com.monpanier.app
 
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AccountBalanceWallet
-import androidx.compose.material.icons.filled.Delete
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.launch
+import java.text.NumberFormat
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
 @Composable
 fun BudgetScreen(
-    pad: PaddingValues,
     purchases: List<PurchaseEntity>,
     budgets: List<BudgetEntity>,
-    fg: Color,
-    card: Color,
-    onSaveBudget: (BudgetEntity) -> Unit,
-    onDeleteBudget: (BudgetEntity) -> Unit
+    dao: PurchaseDao,
+    modifier: Modifier = Modifier
 ) {
+    val scope = rememberCoroutineScope()
+
     val currentMonth = remember {
-        SimpleDateFormat("yyyy-MM", Locale.US).format(Date())
+        SimpleDateFormat("yyyy-MM", Locale.getDefault()).format(Date())
     }
 
     val currentBudget = budgets.firstOrNull {
         it.month == currentMonth
     }
 
-    var amountText by remember(currentBudget?.id, currentBudget?.amount) {
+    var amountText by remember(currentBudget?.amount) {
         mutableStateOf(
             currentBudget?.amount?.toString() ?: ""
         )
     }
 
-    var error by remember { mutableStateOf("") }
+    var message by remember {
+        mutableStateOf("")
+    }
 
     val spent = purchases
         .filter {
-            it.currency == "DZD" &&
-            it.receiptDate.startsWith(currentMonth)
+            it.receiptDate.startsWith(currentMonth) &&
+            it.currency.equals("DZD", ignoreCase = true)
         }
         .sumOf { it.total }
 
@@ -65,305 +58,229 @@ fun BudgetScreen(
         0f
     }
 
-    val percentage = if (budgetAmount > 0) {
-        (spent / budgetAmount) * 100
-    } else {
-        0.0
+    val numberFormat = remember {
+        NumberFormat.getNumberInstance(Locale.FRANCE)
     }
 
-    val monthLabel = remember(currentMonth) {
-        runCatching {
-            val date = SimpleDateFormat(
-                "yyyy-MM",
-                Locale.US
-            ).parse(currentMonth)
+    fun formatAmount(value: Double): String {
+        return numberFormat.format(value) + " DZD"
+    }
 
-            SimpleDateFormat(
-                "MMMM yyyy",
-                Locale.FRANCE
-            ).format(date ?: Date())
-        }.getOrDefault(currentMonth)
+    val monthLabel = remember {
+        SimpleDateFormat("MMMM yyyy", Locale.FRENCH)
+            .format(Date())
+            .replaceFirstChar { it.uppercase() }
     }
 
     Column(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxSize()
-            .padding(pad)
+            .verticalScroll(rememberScrollState())
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
 
         Text(
-            "Budget mensuel",
-            fontSize = 24.sp,
-            fontWeight = FontWeight.Bold,
-            color = fg
+            text = "Budget mensuel",
+            style = MaterialTheme.typography.headlineSmall
         )
 
         Text(
-            monthLabel.replaceFirstChar {
-                it.uppercase()
-            },
-            color = fg.copy(alpha = 0.7f)
+            text = monthLabel,
+            style = MaterialTheme.typography.titleMedium
         )
 
         Card(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(18.dp),
-            colors = CardDefaults.cardColors(
-                containerColor = card
-            )
+            modifier = Modifier.fillMaxWidth()
         ) {
             Column(
                 modifier = Modifier.padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
+
                 Text(
-                    "Définir mon budget du mois",
-                    fontWeight = FontWeight.Bold,
-                    color = fg
+                    text = "Définir mon budget (DZD)",
+                    style = MaterialTheme.typography.titleMedium
                 )
 
                 OutlinedTextField(
                     value = amountText,
                     onValueChange = {
                         amountText = it
-                        error = ""
+                        message = ""
                     },
                     modifier = Modifier.fillMaxWidth(),
                     label = {
-                        Text("Budget en DZD")
+                        Text("Montant mensuel")
                     },
                     placeholder = {
-                        Text("Ex. : 50000")
+                        Text("Exemple : 50000")
                     },
-                    keyboardOptions = KeyboardOptions(
-                        keyboardType = KeyboardType.Decimal
-                    ),
                     singleLine = true
                 )
-
-                if (error.isNotBlank()) {
-                    Text(
-                        error,
-                        color = Color.Red
-                    )
-                }
 
                 Button(
                     onClick = {
                         val amount = amountText
-                            .replace(',', '.')
+                            .replace(" ", "")
+                            .replace(",", ".")
                             .toDoubleOrNull()
 
                         if (amount == null || amount <= 0) {
-                            error = "Saisis un montant supérieur à zéro."
+                            message = "Veuillez saisir un montant valide."
                         } else {
-                            onSaveBudget(
-                                BudgetEntity(
-                                    id = currentBudget?.id ?: 0,
-                                    month = currentMonth,
-                                    amount = amount
-                                )
-                            )
-                            error = ""
+                            scope.launch {
+                                try {
+                                    dao.saveBudget(
+                                        BudgetEntity(
+                                            id = currentBudget?.id ?: 0,
+                                            month = currentMonth,
+                                            amount = amount
+                                        )
+                                    )
+                                    message = "Budget enregistré."
+                                } catch (e: Exception) {
+                                    message = "Erreur lors de l'enregistrement."
+                                }
+                            }
                         }
                     },
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Text("Enregistrer le budget")
                 }
+
+                if (message.isNotBlank()) {
+                    Text(
+                        text = message,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
             }
         }
 
         Card(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(18.dp),
-            colors = CardDefaults.cardColors(
-                containerColor = card
-            )
+            modifier = Modifier.fillMaxWidth()
         ) {
             Column(
                 modifier = Modifier.padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(
-                        Icons.Default.AccountBalanceWallet,
-                        contentDescription = null,
-                        tint = Color(0xFF078A4B)
-                    )
 
-                    Spacer(Modifier.width(8.dp))
-
-                    Text(
-                        "Suivi de mes dépenses",
-                        fontWeight = FontWeight.Bold,
-                        color = fg
-                    )
-                }
-
-                BudgetLine(
-                    "Budget fixé",
-                    budgetAmount,
-                    fg
+                Text(
+                    text = "Suivi du mois",
+                    style = MaterialTheme.typography.titleMedium
                 )
 
-                BudgetLine(
-                    "Dépenses réalisées",
-                    spent,
-                    fg
-                )
+                Text("Budget : ${formatAmount(budgetAmount)}")
 
-                BudgetLine(
-                    "Montant restant",
-                    remaining,
-                    if (remaining < 0) Color(0xFFD32F2F)
-                    else Color(0xFF078A4B)
+                Text("Dépenses : ${formatAmount(spent)}")
+
+                Text(
+                    text = "Reste : ${formatAmount(remaining)}",
+                    color = if (remaining < 0) {
+                        MaterialTheme.colorScheme.error
+                    } else {
+                        MaterialTheme.colorScheme.primary
+                    }
                 )
 
                 LinearProgressIndicator(
                     progress = { progress },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(10.dp),
-                    color = when {
-                        percentage >= 100 -> Color(0xFFD32F2F)
-                        percentage >= 80 -> Color(0xFFFF9800)
-                        else -> Color(0xFF078A4B)
-                    },
-                    trackColor = fg.copy(alpha = 0.1f)
+                        .height(10.dp)
                 )
 
                 Text(
-                    "Budget utilisé : ${"%.1f".format(Locale.FRANCE, percentage)} %",
-                    color = fg,
-                    fontWeight = FontWeight.SemiBold
+                    text = "Utilisation : ${(progress * 100).toInt()} %"
                 )
 
-                when {
-                    budgetAmount <= 0 -> {
-                        Text(
-                            "Définis ton budget pour commencer le suivi.",
-                            color = fg.copy(alpha = 0.7f)
-                        )
-                    }
+                if (budgetAmount > 0 && spent >= budgetAmount) {
+                    Text(
+                        text = "Attention : votre budget mensuel est dépassé !",
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                } else if (budgetAmount > 0 && spent >= budgetAmount * 0.8) {
+                    Text(
+                        text = "Attention : vous avez utilisé au moins 80 % de votre budget.",
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                }
 
-                    percentage >= 100 -> {
-                        Text(
-                            "Attention : ton budget mensuel est dépassé !",
-                            color = Color(0xFFD32F2F),
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-
-                    percentage >= 80 -> {
-                        Text(
-                            "Attention : tu as utilisé au moins 80 % de ton budget.",
-                            color = Color(0xFFFF9800),
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-
-                    else -> {
-                        Text(
-                            "Tu respectes ton budget pour le moment.",
-                            color = Color(0xFF078A4B)
-                        )
-                    }
+                if (budgetAmount <= 0) {
+                    Text(
+                        text = "Définissez votre budget pour commencer le suivi."
+                    )
                 }
             }
         }
 
         Text(
-            "Historique des budgets",
-            fontSize = 19.sp,
-            fontWeight = FontWeight.Bold,
-            color = fg
+            text = "Historique des budgets",
+            style = MaterialTheme.typography.titleLarge
         )
 
-        LazyColumn(
-            modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            items(
-                budgets.filter { it.month != currentMonth },
-                key = { it.id }
-            ) { budget ->
+        if (budgets.isEmpty()) {
+            Text("Aucun budget enregistré pour le moment.")
+        } else {
+            budgets.forEach { budget ->
+
+                val budgetMonthLabel = try {
+                    val date = SimpleDateFormat(
+                        "yyyy-MM",
+                        Locale.getDefault()
+                    ).parse(budget.month)
+
+                    date?.let {
+                        SimpleDateFormat(
+                            "MMMM yyyy",
+                            Locale.FRENCH
+                        ).format(it).replaceFirstChar { c ->
+                            c.uppercase()
+                        }
+                    } ?: budget.month
+                } catch (e: Exception) {
+                    budget.month
+                }
 
                 Card(
-                    colors = CardDefaults.cardColors(
-                        containerColor = card
-                    )
+                    modifier = Modifier.fillMaxWidth()
                 ) {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(12.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                            .padding(14.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Column(
                             modifier = Modifier.weight(1f)
                         ) {
                             Text(
-                                budget.month,
-                                fontWeight = FontWeight.Bold,
-                                color = fg
+                                text = budgetMonthLabel,
+                                style = MaterialTheme.typography.titleMedium
                             )
 
-                            Text(
-                                "${"%.2f".format(Locale.FRANCE, budget.amount)} DZD",
-                                color = fg.copy(alpha = 0.7f)
-                            )
+                            Text(formatAmount(budget.amount))
                         }
 
-                        IconButton(
+                        TextButton(
                             onClick = {
-                                onDeleteBudget(budget)
+                                scope.launch {
+                                    dao.deleteBudget(budget.id)
+                                }
                             }
                         ) {
-                            Icon(
-                                Icons.Default.Delete,
-                                contentDescription = "Supprimer ce budget",
-                                tint = Color(0xFFD32F2F)
+                            Text(
+                                text = "Supprimer",
+                                color = MaterialTheme.colorScheme.error
                             )
                         }
                     }
                 }
             }
-
-            if (budgets.isEmpty() ||
-                budgets.none { it.month != currentMonth }
-            ) {
-                item {
-                    Text(
-                        "Aucun ancien budget enregistré.",
-                        color = fg.copy(alpha = 0.7f)
-                    )
-                }
-            }
         }
-    }
-}
-
-@Composable
-private fun BudgetLine(
-    label: String,
-    amount: Double,
-    color: Color
-) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween
-    ) {
-        Text(label, color = color)
-
-        Text(
-            "${"%.2f".format(Locale.FRANCE, amount)} DZD",
-            fontWeight = FontWeight.Bold,
-            color = color
-        )
     }
 }
