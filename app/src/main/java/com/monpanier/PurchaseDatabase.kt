@@ -1,7 +1,10 @@
+
 package com.monpanier.app
 
 import android.content.Context
 import androidx.room.*
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 import kotlinx.coroutines.flow.Flow
 
 @Entity(tableName = "purchases")
@@ -46,7 +49,6 @@ interface PurchaseDao {
     @Query("DELETE FROM purchases")
     suspend fun clearAll()
 
-    // Rechercher les achats avec le numéro du ticket
     @Query("SELECT * FROM purchases WHERE ticketNumber LIKE '%' || :number || '%' ORDER BY id DESC")
     suspend fun searchByTicketNumber(number: String): List<PurchaseEntity>
 }
