@@ -1,4 +1,3 @@
-
 package com.monpanier.app
 
 import android.Manifest
@@ -54,8 +53,6 @@ import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 import kotlinx.coroutines.launch
 import java.util.concurrent.Executors
 import kotlin.math.abs
-import java.text.SimpleDateFormat
-import java.util.Date
 import java.util.Locale
 
 private enum class Screen {
@@ -86,7 +83,6 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 private fun MonPanierV2() {
-
     val context = LocalContext.current
     val dao = remember {
         PurchaseDatabase.get(context).purchaseDao()
@@ -119,10 +115,7 @@ private fun MonPanierV2() {
     var screen by remember { mutableStateOf(Screen.HOME) }
     var ocrText by remember { mutableStateOf("") }
     var store by remember { mutableStateOf("") }
-
-    // Nouveau champ : numéro imprimé sur le ticket
     var ticketNumber by remember { mutableStateOf("") }
-
     var drafts by remember { mutableStateOf(listOf<Draft>()) }
     var notice by remember { mutableStateOf("") }
     var photo by remember { mutableStateOf<Bitmap?>(null) }
@@ -157,23 +150,20 @@ private fun MonPanierV2() {
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
     ) { uri: Uri? ->
-
         if (uri != null) {
             scope.launch {
                 runCatching {
                     context.contentResolver.openOutputStream(uri)?.use {
                         ExcelExporter.export(purchases, it)
                     } ?: error("Impossible d'ouvrir le fichier")
+                }.onSuccess {
+                    notice = if (isAr)
+                        "تم تصدير ملف Excel"
+                    else
+                        "Fichier Excel exporté"
+                }.onFailure {
+                    notice = "Erreur export : ${it.message}"
                 }
-                    .onSuccess {
-                        notice = if (isAr)
-                            "تم تصدير ملف Excel"
-                        else
-                            "Fichier Excel exporté"
-                    }
-                    .onFailure {
-                        notice = "Erreur export : ${it.message}"
-                    }
             }
         }
     }
@@ -192,10 +182,8 @@ private fun MonPanierV2() {
                 surface = card
             )
     ) {
-
         Scaffold(
             containerColor = bg,
-
             topBar = {
                 TopAppBarV2(
                     isAr,
@@ -204,45 +192,38 @@ private fun MonPanierV2() {
                     { screen = Screen.SETTINGS }
                 )
             },
-
             bottomBar = {
                 NavigationBar(containerColor = card) {
-
                     NavItem(
                         screen == Screen.HOME,
                         { screen = Screen.HOME },
                         Icons.Default.Home,
                         if (isAr) "الرئيسية" else "Accueil"
                     )
-
                     NavItem(
                         screen == Screen.STATS,
                         { screen = Screen.STATS },
                         Icons.Default.BarChart,
                         if (isAr) "إحصائيات" else "Stats"
                     )
-
                     NavItem(
                         screen == Screen.HISTORY,
                         { screen = Screen.HISTORY },
                         Icons.Default.ReceiptLong,
                         if (isAr) "السجل" else "Achats"
                     )
-
                     NavItem(
                         screen == Screen.BASKET,
                         { screen = Screen.BASKET },
                         Icons.Default.ShoppingCart,
                         if (isAr) "السلة" else "Panier"
                     )
-
                     NavItem(
                         screen == Screen.PRICES,
                         { screen = Screen.PRICES },
                         Icons.Default.ShowChart,
                         if (isAr) "الأسعار" else "Prix"
                     )
-
                     NavItem(
                         screen == Screen.SETTINGS,
                         { screen = Screen.SETTINGS },
@@ -251,15 +232,11 @@ private fun MonPanierV2() {
                     )
                 }
             },
-
             snackbarHost = {
                 SnackbarHost(snackbar)
             }
-
         ) { pad ->
-
             when (screen) {
-
                 Screen.HOME -> HomeV2(
                     pad, purchases, money, lang, total, fg, card,
                     { screen = Screen.SCAN },
@@ -280,7 +257,6 @@ private fun MonPanierV2() {
                 )
 
                 Screen.CROP -> photo?.let { p ->
-
                     CropScreen(
                         pad,
                         isAr,
@@ -289,17 +265,13 @@ private fun MonPanierV2() {
                         p,
                         ocrBusy,
                         cropMsg,
-
                         onConfirm = { cropped ->
-
                             ocrBusy = true
                             cropMsg = ""
 
                             runOcr(
                                 cropped,
-
                                 onDone = { text, words ->
-
                                     ocrBusy = false
                                     ocrText = text
 
@@ -326,22 +298,18 @@ private fun MonPanierV2() {
                                     }
 
                                     if (drafts.isEmpty()) {
-                                        drafts = listOf(
-                                            Draft("", "1", "", "")
-                                        )
+                                        drafts = listOf(Draft("", "1", "", ""))
                                     }
 
                                     photo = null
                                     screen = Screen.REVIEW
                                 },
-
                                 onFail = { msg ->
                                     ocrBusy = false
                                     cropMsg = msg
                                 }
                             )
                         },
-
                         onRetake = {
                             photo = null
                             screen = Screen.SCAN
@@ -356,22 +324,16 @@ private fun MonPanierV2() {
                     card,
                     store,
                     { store = it },
-
-                    // Numéro du ticket
                     ticketNumber,
                     { ticketNumber = it },
-
                     drafts,
                     { drafts = it },
                     ocrText,
-
                     onSave = {
-
                         val rid = ReceiptParser.receiptId()
                         val number = ticketNumber.trim()
 
                         val rows = drafts.mapNotNull { d ->
-
                             val q = d.quantity
                                 .replace(',', '.')
                                 .toDoubleOrNull()
@@ -407,11 +369,8 @@ private fun MonPanierV2() {
                         }
 
                         scope.launch {
-
                             if (rows.isNotEmpty()) {
-
                                 dao.insertAll(rows)
-
                                 ticketNumber = ""
                                 store = ""
 
@@ -421,9 +380,7 @@ private fun MonPanierV2() {
                                     "Achats enregistrés"
 
                                 screen = Screen.HOME
-
                             } else {
-
                                 notice = if (isAr)
                                     "تحقق من المنتجات والأسعار"
                                 else
@@ -431,19 +388,19 @@ private fun MonPanierV2() {
                             }
                         }
                     },
-
                     onRescan = {
                         screen = Screen.SCAN
                     }
                 )
 
                 Screen.HISTORY -> HistoryV2(
-                    pad,
-                    purchases,
-                    money,
-                    isAr,
-                    fg,
-                    card,
+                    pad = pad,
+                    rows = purchases,
+                    money = money,
+                    ar = isAr,
+                    fg = fg,
+                    card = card,
+                    dao = dao,
                     onExport = {
                         createXlsx.launch("MonPanier-achats.xlsx")
                     }
@@ -555,7 +512,6 @@ private fun HomeV2(
         Modifier.fillMaxSize().padding(pad).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-
         item {
             Text(
                 if (ar) "مرحباً بك في Mon Panier"
@@ -564,7 +520,6 @@ private fun HomeV2(
                 fontWeight = FontWeight.Bold,
                 color = fg
             )
-
             Text(
                 if (ar) "تابع مشترياتك ونفقاتك"
                 else "Scanne tes tickets et suis tes dépenses.",
@@ -587,14 +542,12 @@ private fun HomeV2(
                         else "Total des achats",
                         color = Color.White
                     )
-
                     Text(
                         "${"%.2f".format(Locale.FRANCE, sum)} $symbol",
                         fontSize = 30.sp,
                         fontWeight = FontWeight.Bold,
                         color = Color.White
                     )
-
                     Text(
                         "${scoped.size} ${if (ar) "منتج مسجل" else "lignes enregistrées"}",
                         color = Color.White
@@ -623,7 +576,6 @@ private fun HomeV2(
                     card,
                     fg
                 )
-
                 SmallMetric(
                     Modifier.weight(1f),
                     if (ar) "الإيصالات" else "Tickets",
@@ -723,7 +675,6 @@ private fun ScannerScreen(
         Modifier.fillMaxSize().padding(pad).padding(14.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-
         Text(
             if (ar) "امسح إيصال الشراء" else "Scanner un ticket",
             fontSize = 22.sp,
@@ -732,31 +683,25 @@ private fun ScannerScreen(
         )
 
         if (!permission) {
-
             Text(
                 if (ar) "يلزم السماح باستعمال الكاميرا"
                 else "L'accès à la caméra est nécessaire.",
                 color = fg
             )
-
             Button(onClick = {
                 request.launch(Manifest.permission.CAMERA)
             }) {
                 Text(if (ar) "السماح" else "Autoriser la caméra")
             }
-
         } else {
-
             AndroidView(
                 modifier = Modifier.weight(1f).fillMaxWidth(),
                 factory = { ctx ->
-
                     val previewView = PreviewView(ctx)
                     val providerFuture =
                         ProcessCameraProvider.getInstance(ctx)
 
                     providerFuture.addListener({
-
                         val provider = providerFuture.get()
 
                         val preview = Preview.Builder()
@@ -784,7 +729,6 @@ private fun ScannerScreen(
                         } catch (e: Exception) {
                             message = e.localizedMessage ?: "Erreur caméra"
                         }
-
                     }, ContextCompat.getMainExecutor(ctx))
 
                     previewView
@@ -793,7 +737,6 @@ private fun ScannerScreen(
 
             Button(
                 onClick = {
-
                     val cap = capture ?: return@Button
 
                     message = if (ar)
@@ -804,9 +747,7 @@ private fun ScannerScreen(
                     cap.takePicture(
                         executor,
                         object : ImageCapture.OnImageCapturedCallback() {
-
                             override fun onCaptureSuccess(image: ImageProxy) {
-
                                 val bmp = try {
                                     imageToBitmap(image)
                                 } catch (e: Throwable) {
@@ -824,13 +765,10 @@ private fun ScannerScreen(
                                 }
                             }
 
-                            override fun onError(
-                                exception: ImageCaptureException
-                            ) {
+                            override fun onError(exception: ImageCaptureException) {
                                 ContextCompat.getMainExecutor(context).execute {
-                                    message =
-                                        exception.localizedMessage
-                                            ?: "Erreur de capture"
+                                    message = exception.localizedMessage
+                                        ?: "Erreur de capture"
                                 }
                             }
                         }
@@ -859,24 +797,15 @@ private fun ScannerScreen(
 private fun fmtQty(q: Double): String =
     if (q % 1.0 == 0.0) q.toLong().toString() else q.toString()
 
-/** Convertit la photo CameraX en Bitmap droit, réduit à 2600 px maximum. */
 private fun imageToBitmap(image: ImageProxy): Bitmap {
-
     var bmp = image.toBitmap()
     val rotation = image.imageInfo.rotationDegrees
 
     if (rotation != 0) {
         val m = Matrix()
         m.postRotate(rotation.toFloat())
-
         bmp = Bitmap.createBitmap(
-            bmp,
-            0,
-            0,
-            bmp.width,
-            bmp.height,
-            m,
-            true
+            bmp, 0, 0, bmp.width, bmp.height, m, true
         )
     }
 
@@ -895,7 +824,6 @@ private fun imageToBitmap(image: ImageProxy): Bitmap {
     return bmp
 }
 
-/** Lit le texte de l'image et renvoie chaque mot avec sa position. */
 private fun runOcr(
     bitmap: Bitmap,
     onDone: (String, List<OcrWord>) -> Unit,
@@ -906,15 +834,12 @@ private fun runOcr(
     TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
         .process(input)
         .addOnSuccessListener { result ->
-
             val words = ArrayList<OcrWord>()
 
             for (block in result.textBlocks) {
                 for (line in block.lines) {
                     for (el in line.elements) {
-
                         val b = el.boundingBox ?: continue
-
                         words.add(
                             OcrWord(
                                 el.text,
@@ -935,7 +860,8 @@ private fun runOcr(
         }
 }
 
-/** Écran de cadrage du ticket. */
+/* ÉCRAN DE CADRAGE */
+
 @Composable
 private fun CropScreen(
     pad: PaddingValues,
@@ -985,7 +911,6 @@ private fun CropScreen(
         Modifier.fillMaxSize().padding(pad).padding(14.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-
         Text(
             if (ar) "اضبط إطار الإيصال" else "Cadrer le ticket",
             fontSize = 22.sp,
@@ -995,7 +920,7 @@ private fun CropScreen(
 
         Text(
             if (ar) "حرّك الزوايا لتحيط بجدول المنتجات فقط."
-            else "Glisse les coins pour garder le tableau des produits (de la ligne « Produit » jusqu'au Total).",
+            else "Glisse les coins pour garder le tableau des produits.",
             color = fg.copy(alpha = .7f)
         )
 
@@ -1008,35 +933,25 @@ private fun CropScreen(
                     viewH = it.height.toFloat()
                 }
                 .pointerInput(viewW, viewH) {
-
                     detectDragGestures(
-
                         onDragStart = { p ->
                             active = when {
                                 abs(p.x - cl) < handle &&
                                     abs(p.y - ct) < handle -> 1
-
                                 abs(p.x - cr) < handle &&
                                     abs(p.y - ct) < handle -> 2
-
                                 abs(p.x - cl) < handle &&
                                     abs(p.y - cb) < handle -> 3
-
                                 abs(p.x - cr) < handle &&
                                     abs(p.y - cb) < handle -> 4
-
                                 p.x >= cl && p.x <= cr &&
                                     p.y >= ct && p.y <= cb -> 5
-
                                 else -> 0
                             }
                         },
-
                         onDragEnd = { active = 0 },
                         onDragCancel = { active = 0 },
-
                         onDrag = { change, d ->
-
                             change.consume()
 
                             val minX = offX
@@ -1045,34 +960,27 @@ private fun CropScreen(
                             val maxY = offY + imgH
 
                             when (active) {
-
                                 1 -> {
                                     cl = (cl + d.x).coerceIn(minX, cr - minSize)
                                     ct = (ct + d.y).coerceIn(minY, cb - minSize)
                                 }
-
                                 2 -> {
                                     cr = (cr + d.x).coerceIn(cl + minSize, maxX)
                                     ct = (ct + d.y).coerceIn(minY, cb - minSize)
                                 }
-
                                 3 -> {
                                     cl = (cl + d.x).coerceIn(minX, cr - minSize)
                                     cb = (cb + d.y).coerceIn(ct + minSize, maxY)
                                 }
-
                                 4 -> {
                                     cr = (cr + d.x).coerceIn(cl + minSize, maxX)
                                     cb = (cb + d.y).coerceIn(ct + minSize, maxY)
                                 }
-
                                 5 -> {
                                     val w = cr - cl
                                     val h = cb - ct
-
                                     val nl = (cl + d.x).coerceIn(minX, maxX - w)
                                     val nt = (ct + d.y).coerceIn(minY, maxY - h)
-
                                     cl = nl
                                     ct = nt
                                     cr = nl + w
@@ -1083,7 +991,6 @@ private fun CropScreen(
                     )
                 }
         ) {
-
             Image(
                 bitmap = bitmap.asImageBitmap(),
                 contentDescription = null,
@@ -1092,7 +999,6 @@ private fun CropScreen(
             )
 
             Canvas(Modifier.fillMaxSize()) {
-
                 val dim = Color.Black.copy(alpha = 0.55f)
 
                 drawRect(dim, Offset(0f, 0f), Size(size.width, ct))
@@ -1107,10 +1013,10 @@ private fun CropScreen(
                     style = Stroke(width = 3f)
                 )
 
-                drawCircle(green, radius = 16f, center = Offset(cl, ct))
-                drawCircle(green, radius = 16f, center = Offset(cr, ct))
-                drawCircle(green, radius = 16f, center = Offset(cl, cb))
-                drawCircle(green, radius = 16f, center = Offset(cr, cb))
+                drawCircle(green, 16f, Offset(cl, ct))
+                drawCircle(green, 16f, Offset(cr, ct))
+                drawCircle(green, 16f, Offset(cl, cb))
+                drawCircle(green, 16f, Offset(cr, cb))
             }
         }
 
@@ -1122,7 +1028,6 @@ private fun CropScreen(
             Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-
             OutlinedButton(
                 onClick = onRetake,
                 enabled = !busy,
@@ -1133,22 +1038,14 @@ private fun CropScreen(
 
             Button(
                 onClick = {
-
                     val x = ((cl - offX) / scale)
-                        .toInt()
-                        .coerceIn(0, bitmap.width - 1)
-
+                        .toInt().coerceIn(0, bitmap.width - 1)
                     val y = ((ct - offY) / scale)
-                        .toInt()
-                        .coerceIn(0, bitmap.height - 1)
-
+                        .toInt().coerceIn(0, bitmap.height - 1)
                     val w = ((cr - cl) / scale)
-                        .toInt()
-                        .coerceIn(1, bitmap.width - x)
-
+                        .toInt().coerceIn(1, bitmap.width - x)
                     val h = ((cb - ct) / scale)
-                        .toInt()
-                        .coerceIn(1, bitmap.height - y)
+                        .toInt().coerceIn(1, bitmap.height - y)
 
                     onConfirm(Bitmap.createBitmap(bitmap, x, y, w, h))
                 },
@@ -1166,9 +1063,7 @@ private fun CropScreen(
     }
 }
 
-/* -------------------------------------------------------
-   ÉCRAN DE VÉRIFICATION AVEC NUMÉRO DE TICKET
-------------------------------------------------------- */
+/* ÉCRAN DE VÉRIFICATION */
 
 @Composable
 private fun ReviewScreen(
@@ -1186,12 +1081,10 @@ private fun ReviewScreen(
     onSave: () -> Unit,
     onRescan: () -> Unit
 ) {
-
     Column(
         Modifier.fillMaxSize().padding(pad).padding(14.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-
         Text(
             if (ar) "تحقق من المنتجات" else "Vérifier les articles",
             fontSize = 22.sp,
@@ -1207,16 +1100,13 @@ private fun ReviewScreen(
             singleLine = true
         )
 
-        // Nouveau champ du numéro imprimé sur le ticket
         OutlinedTextField(
             value = ticketNumber,
             onValueChange = onTicketNumber,
             label = {
                 Text(if (ar) "رقم الإيصال" else "Numéro du ticket")
             },
-            placeholder = {
-                Text("Ex. : TCK-2026-00125")
-            },
+            placeholder = { Text("Ex. : TCK-2026-00125") },
             modifier = Modifier.fillMaxWidth(),
             singleLine = true
         )
@@ -1231,24 +1121,17 @@ private fun ReviewScreen(
             Modifier.weight(1f),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-
             items(drafts.size) { i ->
-
                 val d = drafts[i]
 
                 Card(
-                    colors = CardDefaults.cardColors(
-                        containerColor = card
-                    )
+                    colors = CardDefaults.cardColors(containerColor = card)
                 ) {
-
                     Column(Modifier.padding(10.dp)) {
-
                         Row(verticalAlignment = Alignment.CenterVertically) {
-
                             OutlinedTextField(
-                                d.product,
-                                { v ->
+                                value = d.product,
+                                onValueChange = { v ->
                                     onDrafts(
                                         drafts.toMutableList().also {
                                             it[i] = d.copy(product = v)
@@ -1273,7 +1156,7 @@ private fun ReviewScreen(
                             ) {
                                 Icon(
                                     Icons.Default.Delete,
-                                    if (ar) "حذف" else "Supprimer ce produit",
+                                    contentDescription = "Supprimer ce produit",
                                     tint = Color(0xFFD32F2F)
                                 )
                             }
@@ -1282,26 +1165,23 @@ private fun ReviewScreen(
                         Row(
                             horizontalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
-
                             OutlinedTextField(
-                                d.quantity,
-                                { v ->
+                                value = d.quantity,
+                                onValueChange = { v ->
                                     onDrafts(
                                         drafts.toMutableList().also {
                                             it[i] = d.copy(quantity = v)
                                         }
                                     )
                                 },
-                                label = {
-                                    Text(if (ar) "الكمية" else "Qté")
-                                },
+                                label = { Text(if (ar) "الكمية" else "Qté") },
                                 modifier = Modifier.weight(1f),
                                 singleLine = true
                             )
 
                             OutlinedTextField(
-                                d.unitPrice,
-                                { v ->
+                                value = d.unitPrice,
+                                onValueChange = { v ->
                                     onDrafts(
                                         drafts.toMutableList().also {
                                             it[i] = d.copy(unitPrice = v)
@@ -1316,17 +1196,15 @@ private fun ReviewScreen(
                             )
 
                             OutlinedTextField(
-                                d.total,
-                                { v ->
+                                value = d.total,
+                                onValueChange = { v ->
                                     onDrafts(
                                         drafts.toMutableList().also {
                                             it[i] = d.copy(total = v)
                                         }
                                     )
                                 },
-                                label = {
-                                    Text(if (ar) "المجموع" else "Total")
-                                },
+                                label = { Text(if (ar) "المجموع" else "Total") },
                                 modifier = Modifier.weight(1f),
                                 singleLine = true
                             )
@@ -1337,7 +1215,6 @@ private fun ReviewScreen(
         }
 
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-
             OutlinedButton(
                 onClick = onRescan,
                 modifier = Modifier.weight(1f)
@@ -1362,9 +1239,7 @@ private fun ReviewScreen(
     }
 }
 
-/* -------------------------------------------------------
-   HISTORIQUE AVEC RECHERCHE PAR NUMÉRO DE TICKET
-------------------------------------------------------- */
+/* HISTORIQUE : RECHERCHE, MODIFICATION ET SUPPRESSION */
 
 @Composable
 private fun HistoryV2(
@@ -1374,30 +1249,29 @@ private fun HistoryV2(
     ar: Boolean,
     fg: Color,
     card: Color,
+    dao: PurchaseDao,
     onExport: () -> Unit
 ) {
-
     var search by remember { mutableStateOf("") }
+    var message by remember { mutableStateOf("") }
+    val scope = rememberCoroutineScope()
 
     val query = search.trim()
 
     val filtered = rows.filter {
-
         it.currency == money.name &&
             (
                 query.isBlank() ||
                     it.ticketNumber.contains(query, ignoreCase = true) ||
                     it.product.contains(query, ignoreCase = true) ||
                     it.store.contains(query, ignoreCase = true)
-                )
+            )
     }
 
     Column(
         Modifier.fillMaxSize().padding(pad).padding(14.dp)
     ) {
-
         Row(verticalAlignment = Alignment.CenterVertically) {
-
             Text(
                 if (ar) "سجل المشتريات" else "Historique des achats",
                 Modifier.weight(1f),
@@ -1429,15 +1303,12 @@ private fun HistoryV2(
                 )
             },
             leadingIcon = {
-                Icon(Icons.Default.Search, contentDescription = null)
+                Icon(Icons.Default.Search, null)
             },
             trailingIcon = {
                 if (search.isNotEmpty()) {
                     IconButton(onClick = { search = "" }) {
-                        Icon(
-                            Icons.Default.Clear,
-                            contentDescription = "Effacer"
-                        )
+                        Icon(Icons.Default.Clear, null)
                     }
                 }
             }
@@ -1445,47 +1316,117 @@ private fun HistoryV2(
 
         Spacer(Modifier.height(10.dp))
 
+        if (message.isNotBlank()) {
+            Text(
+                message,
+                color = Color(0xFF078A4B),
+                modifier = Modifier.padding(bottom = 8.dp)
+            )
+        }
+
         LazyColumn(
             Modifier.weight(1f),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            items(filtered) {
-                PurchaseRowV2(it, money, fg, card)
+            items(filtered, key = { it.id }) { purchase ->
+                PurchaseManagementRow(
+                    purchase = purchase,
+                    fg = fg,
+                    card = card,
+                    onUpdate = { updated ->
+                        scope.launch {
+                            runCatching {
+                                dao.update(updated)
+                            }.onSuccess {
+                                message = if (ar)
+                                    "تم تعديل المشتريات"
+                                else
+                                    "Achat modifié avec succès"
+                            }.onFailure {
+                                message = "Erreur : ${it.message}"
+                            }
+                        }
+                    },
+                    onDeletePurchase = {
+                        scope.launch {
+                            runCatching {
+                                dao.deletePurchase(purchase.id)
+                            }.onSuccess {
+                                message = if (ar)
+                                    "تم حذف المنتج"
+                                else
+                                    "Produit supprimé"
+                            }.onFailure {
+                                message = "Erreur : ${it.message}"
+                            }
+                        }
+                    },
+                    onDeleteReceipt = {
+                        scope.launch {
+                            runCatching {
+                                dao.deleteReceipt(purchase.receiptId)
+                            }.onSuccess {
+                                message = if (ar)
+                                    "تم حذف الإيصال بالكامل"
+                                else
+                                    "Ticket supprimé intégralement"
+                            }.onFailure {
+                                message = "Erreur : ${it.message}"
+                            }
+                        }
+                    }
+                )
             }
         }
 
         if (filtered.isEmpty()) {
             Text(
-                if (ar) "لا توجد نتائج"
-                else "Aucun achat trouvé.",
+                if (ar) "لا توجد نتائج" else "Aucun achat trouvé.",
                 color = fg.copy(alpha = .7f)
             )
         }
     }
 }
 
-/* -------------------------------------------------------
-   AFFICHAGE DES ACHATS ET DU NUMÉRO DE TICKET
-------------------------------------------------------- */
+/* LIGNE D'ACHAT AVEC MENU D'ACTIONS */
 
 @Composable
-private fun PurchaseRowV2(
-    p: PurchaseEntity,
-    money: Money,
+private fun PurchaseManagementRow(
+    purchase: PurchaseEntity,
     fg: Color,
-    card: Color
+    card: Color,
+    onUpdate: (PurchaseEntity) -> Unit,
+    onDeletePurchase: () -> Unit,
+    onDeleteReceipt: () -> Unit
 ) {
+    var menuExpanded by remember { mutableStateOf(false) }
+    var editDialog by remember { mutableStateOf(false) }
+    var deleteDialog by remember { mutableStateOf(false) }
+    var deleteReceiptDialog by remember { mutableStateOf(false) }
+
+    var product by remember(purchase.id) {
+        mutableStateOf(purchase.product)
+    }
+    var quantity by remember(purchase.id) {
+        mutableStateOf(purchase.quantity.toString())
+    }
+    var unitPrice by remember(purchase.id) {
+        mutableStateOf(purchase.unitPrice.toString())
+    }
+    var total by remember(purchase.id) {
+        mutableStateOf(purchase.total.toString())
+    }
+
+    var error by remember { mutableStateOf("") }
 
     Card(
         colors = CardDefaults.cardColors(containerColor = card),
         shape = RoundedCornerShape(14.dp)
     ) {
-
         Row(
             Modifier.fillMaxWidth().padding(12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-
             Icon(
                 Icons.Default.ShoppingBag,
                 null,
@@ -1495,7 +1436,249 @@ private fun PurchaseRowV2(
             Spacer(Modifier.width(10.dp))
 
             Column(Modifier.weight(1f)) {
+                Text(
+                    purchase.product,
+                    fontWeight = FontWeight.SemiBold,
+                    color = fg
+                )
 
+                Text(
+                    "${purchase.store} • ${purchase.receiptDate}",
+                    fontSize = 11.sp,
+                    color = fg.copy(alpha = .7f)
+                )
+
+                Text(
+                    "Qté : ${purchase.quantity}",
+                    fontSize = 11.sp,
+                    color = fg.copy(alpha = .7f)
+                )
+
+                if (purchase.ticketNumber.isNotBlank()) {
+                    Text(
+                        "Ticket N° : ${purchase.ticketNumber}",
+                        fontSize = 12.sp,
+                        color = Color(0xFF078A4B)
+                    )
+                }
+
+                Text(
+                    "${"%.2f".format(Locale.FRANCE, purchase.total)} ${purchase.currency}",
+                    fontWeight = FontWeight.Bold,
+                    color = fg
+                )
+            }
+
+            Box {
+                IconButton(onClick = { menuExpanded = true }) {
+                    Icon(
+                        Icons.Default.MoreVert,
+                        contentDescription = "Options",
+                        tint = fg
+                    )
+                }
+
+                DropdownMenu(
+                    expanded = menuExpanded,
+                    onDismissRequest = { menuExpanded = false }
+                ) {
+                    DropdownMenuItem(
+                        text = { Text("Modifier cet achat") },
+                        leadingIcon = {
+                            Icon(Icons.Default.Edit, null)
+                        },
+                        onClick = {
+                            menuExpanded = false
+                            editDialog = true
+                        }
+                    )
+
+                    DropdownMenuItem(
+                        text = { Text("Supprimer ce produit") },
+                        leadingIcon = {
+                            Icon(Icons.Default.Delete, null)
+                        },
+                        onClick = {
+                            menuExpanded = false
+                            deleteDialog = true
+                        }
+                    )
+
+                    DropdownMenuItem(
+                        text = { Text("Supprimer tout le ticket") },
+                        leadingIcon = {
+                            Icon(Icons.Default.DeleteForever, null)
+                        },
+                        onClick = {
+                            menuExpanded = false
+                            deleteReceiptDialog = true
+                        }
+                    )
+                }
+            }
+        }
+    }
+
+    if (editDialog) {
+        AlertDialog(
+            onDismissRequest = { editDialog = false },
+            title = { Text("Modifier l'achat") },
+            text = {
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedTextField(
+                        value = product,
+                        onValueChange = { product = it },
+                        label = { Text("Produit") },
+                        singleLine = true
+                    )
+
+                    OutlinedTextField(
+                        value = quantity,
+                        onValueChange = { quantity = it },
+                        label = { Text("Quantité") },
+                        singleLine = true
+                    )
+
+                    OutlinedTextField(
+                        value = unitPrice,
+                        onValueChange = { unitPrice = it },
+                        label = { Text("Prix unitaire") },
+                        singleLine = true
+                    )
+
+                    OutlinedTextField(
+                        value = total,
+                        onValueChange = { total = it },
+                        label = { Text("Total") },
+                        singleLine = true
+                    )
+
+                    if (error.isNotBlank()) {
+                        Text(error, color = Color.Red)
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val q = quantity.replace(',', '.').toDoubleOrNull()
+                        val price = unitPrice.replace(',', '.').toDoubleOrNull()
+                        val amount = total.replace(',', '.').toDoubleOrNull()
+
+                        if (
+                            product.isBlank() ||
+                            q == null || q <= 0 ||
+                            price == null || price < 0 ||
+                            amount == null || amount < 0
+                        ) {
+                            error = "Vérifie les informations saisies."
+                        } else {
+                            onUpdate(
+                                purchase.copy(
+                                    product = product.trim(),
+                                    quantity = q,
+                                    unitPrice = price,
+                                    total = amount
+                                )
+                            )
+                            editDialog = false
+                        }
+                    }
+                ) {
+                    Text("Enregistrer")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { editDialog = false }) {
+                    Text("Annuler")
+                }
+            }
+        )
+    }
+
+    if (deleteDialog) {
+        AlertDialog(
+            onDismissRequest = { deleteDialog = false },
+            title = { Text("Supprimer ce produit ?") },
+            text = {
+                Text(
+                    "Seul cet achat sera supprimé. Les autres produits du ticket seront conservés."
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        onDeletePurchase()
+                        deleteDialog = false
+                    }
+                ) {
+                    Text("Supprimer", color = Color.Red)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { deleteDialog = false }) {
+                    Text("Annuler")
+                }
+            }
+        )
+    }
+
+    if (deleteReceiptDialog) {
+        AlertDialog(
+            onDismissRequest = { deleteReceiptDialog = false },
+            title = { Text("Supprimer tout le ticket ?") },
+            text = {
+                Text(
+                    "Tous les produits enregistrés avec ce ticket seront supprimés définitivement."
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        onDeleteReceipt()
+                        deleteReceiptDialog = false
+                    }
+                ) {
+                    Text("Supprimer le ticket", color = Color.Red)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { deleteReceiptDialog = false }) {
+                    Text("Annuler")
+                }
+            }
+        )
+    }
+}
+
+/* AFFICHAGE SIMPLE DES ACHATS */
+
+@Composable
+private fun PurchaseRowV2(
+    p: PurchaseEntity,
+    money: Money,
+    fg: Color,
+    card: Color
+) {
+    Card(
+        colors = CardDefaults.cardColors(containerColor = card),
+        shape = RoundedCornerShape(14.dp)
+    ) {
+        Row(
+            Modifier.fillMaxWidth().padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                Icons.Default.ShoppingBag,
+                null,
+                tint = Color(0xFF078A4B)
+            )
+
+            Spacer(Modifier.width(10.dp))
+
+            Column(Modifier.weight(1f)) {
                 Text(
                     p.product,
                     fontWeight = FontWeight.SemiBold,
@@ -1527,9 +1710,7 @@ private fun PurchaseRowV2(
     }
 }
 
-/* -------------------------------------------------------
-   STATISTIQUES
-------------------------------------------------------- */
+/* STATISTIQUES */
 
 @Composable
 private fun StatsV2(
@@ -1540,9 +1721,7 @@ private fun StatsV2(
     fg: Color,
     card: Color
 ) {
-
     var period by remember { mutableStateOf("month") }
-
     val now = java.util.Calendar.getInstance()
 
     val filteredCurrency = rows.filter {
@@ -1550,11 +1729,10 @@ private fun StatsV2(
     }
 
     val periodRows = filteredCurrency.filter { row ->
-
         val parsed = runCatching {
             java.text.SimpleDateFormat(
                 "yyyy-MM-dd",
-                java.util.Locale.US
+                Locale.US
             ).parse(row.receiptDate)
         }.getOrNull() ?: return@filter false
 
@@ -1563,7 +1741,6 @@ private fun StatsV2(
         }
 
         when (period) {
-
             "week" ->
                 c.get(java.util.Calendar.YEAR) ==
                     now.get(java.util.Calendar.YEAR) &&
@@ -1593,7 +1770,6 @@ private fun StatsV2(
         Modifier.fillMaxSize().padding(pad).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-
         Text(
             if (ar) "إحصائيات المصاريف"
             else "Statistiques des dépenses",
@@ -1603,7 +1779,6 @@ private fun StatsV2(
         )
 
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-
             FilterChip(
                 selected = period == "week",
                 onClick = { period = "week" },
@@ -1611,7 +1786,6 @@ private fun StatsV2(
                     Text(if (ar) "هذا الأسبوع" else "Cette semaine")
                 }
             )
-
             FilterChip(
                 selected = period == "month",
                 onClick = { period = "month" },
@@ -1619,7 +1793,6 @@ private fun StatsV2(
                     Text(if (ar) "هذا الشهر" else "Ce mois")
                 }
             )
-
             FilterChip(
                 selected = period == "all",
                 onClick = { period = "all" },
@@ -1632,9 +1805,7 @@ private fun StatsV2(
         Card(
             colors = CardDefaults.cardColors(containerColor = card)
         ) {
-
             Column(Modifier.padding(16.dp)) {
-
                 Text(
                     if (ar) "إجمالي المصاريف"
                     else "Montant des achats",
@@ -1668,16 +1839,12 @@ private fun StatsV2(
             Modifier.weight(1f),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-
             items(byProduct) { (name, amount) ->
-
                 Column(
                     Modifier.fillMaxWidth().padding(vertical = 4.dp)
                 ) {
-
                     Row {
                         Text(name, Modifier.weight(1f), color = fg)
-
                         Text(
                             "${"%.2f".format(Locale.FRANCE, amount)} ${money.name}",
                             color = fg
@@ -1708,9 +1875,7 @@ private fun StatsV2(
     }
 }
 
-/* -------------------------------------------------------
-   PARAMÈTRES
-------------------------------------------------------- */
+/* PARAMÈTRES */
 
 @Composable
 private fun SettingsV2(
@@ -1725,12 +1890,10 @@ private fun SettingsV2(
     fg: Color,
     card: Color
 ) {
-
     Column(
         Modifier.fillMaxSize().padding(pad).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-
         Text(
             if (ar) "الإعدادات" else "Paramètres",
             fontSize = 23.sp,
@@ -1742,7 +1905,6 @@ private fun SettingsV2(
             colors = CardDefaults.cardColors(containerColor = card)
         ) {
             Column(Modifier.padding(14.dp)) {
-
                 Text(
                     if (ar) "المظهر" else "Apparence",
                     fontWeight = FontWeight.Bold,
@@ -1750,13 +1912,11 @@ private fun SettingsV2(
                 )
 
                 Row(verticalAlignment = Alignment.CenterVertically) {
-
                     Text(
                         if (dark) "Mode Dark" else "Mode coloré",
                         Modifier.weight(1f),
                         color = fg
                     )
-
                     Switch(dark, onDark)
                 }
             }
@@ -1766,7 +1926,6 @@ private fun SettingsV2(
             colors = CardDefaults.cardColors(containerColor = card)
         ) {
             Column(Modifier.padding(14.dp)) {
-
                 Text(
                     if (ar) "العملة" else "Monnaie",
                     fontWeight = FontWeight.Bold,
@@ -1774,14 +1933,11 @@ private fun SettingsV2(
                 )
 
                 Money.values().forEach {
-
                     Row(verticalAlignment = Alignment.CenterVertically) {
-
                         RadioButton(
                             money == it,
                             { onMoney(it) }
                         )
-
                         Text(it.label, color = fg)
                     }
                 }
@@ -1792,7 +1948,6 @@ private fun SettingsV2(
             colors = CardDefaults.cardColors(containerColor = card)
         ) {
             Column(Modifier.padding(14.dp)) {
-
                 Text(
                     if (ar) "اللغة" else "Langue",
                     fontWeight = FontWeight.Bold,
