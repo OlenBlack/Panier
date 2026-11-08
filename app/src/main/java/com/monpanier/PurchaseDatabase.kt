@@ -33,15 +33,15 @@ data class StoreEntity(
     val name: String
 )
 
-/* Budget mensuel */
-@Entity(tableName = "monthly_budgets")
-data class MonthlyBudgetEntity(
-    @PrimaryKey
-    val month: String, // Format yyyy-MM
-
-    val amount: Double,
-
-    val currency: String
+@Entity(
+    tableName = "monthly_budgets",
+    indices = [Index(value = ["month"], unique = true)]
+)
+data class BudgetEntity(
+    @PrimaryKey(autoGenerate = true)
+    val id: Long = 0,
+    val month: String,
+    val amount: Double
 )
 
 @Dao
@@ -78,7 +78,7 @@ interface PurchaseDao {
     """)
     suspend fun searchByTicketNumber(number: String): List<PurchaseEntity>
 
-    // Répertoire permanent des magasins
+    // Répertoire des magasins
 
     @Query("SELECT * FROM stores ORDER BY name COLLATE NOCASE")
     fun observeStores(): Flow<List<StoreEntity>>
@@ -92,58 +92,23 @@ interface PurchaseDao {
     @Query("DELETE FROM stores WHERE id = :storeId")
     suspend fun deleteStore(storeId: Long)
 
-    // Gestion des budgets mensuels
+    // Budgets mensuels
+
+    @Query("SELECT * FROM monthly_budgets ORDER BY month DESC")
+    fun observeBudgets(): Flow<List<BudgetEntity>>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun saveBudget(budget: MonthlyBudgetEntity)
+    suspend fun saveBudget(budget: BudgetEntity)
 
-    @Query("""
-        SELECT * FROM monthly_budgets
-        WHERE month = :month
-        LIMIT 1
-    """)
-    fun observeBudget(month: String): Flow<MonthlyBudgetEntity?>
-
-    @Query("""
-        SELECT * FROM monthly_budgets
-        ORDER BY month DESC
-    """)
-    fun observeAllBudgets(): Flow<List<MonthlyBudgetEntity>>
-
-    @Query("""
-        SELECT * FROM monthly_budgets
-        WHERE month = :month
-        LIMIT 1
-    """)
-    suspend fun getBudget(month: String): MonthlyBudgetEntity?
-
-    @Query("""
-        DELETE FROM monthly_budgets
-        WHERE month = :month
-    """)
-    suspend fun deleteBudget(month: String)
-
-    // Total des achats pour un mois et une devise
-
-    @Query("""
-        SELECT COALESCE(SUM(total), 0.0)
-        FROM purchases
-        WHERE receiptDate >= :startDate
-        AND receiptDate < :endDate
-        AND currency = :currency
-    """)
-    fun observeMonthlyExpenses(
-        startDate: String,
-        endDate: String,
-        currency: String
-    ): Flow<Double>
+    @Query("DELETE FROM monthly_budgets WHERE id = :budgetId")
+    suspend fun deleteBudget(budgetId: Long)
 }
 
 @Database(
     entities = [
         PurchaseEntity::class,
         StoreEntity::class,
-        MonthlyBudgetEntity::class
+        BudgetEntity::class
     ],
     version = 4,
     exportSchema = false
@@ -167,7 +132,6 @@ abstract class PurchaseDatabase : RoomDatabase() {
 
         private val MIGRATION_2_3 = object : Migration(2, 3) {
             override fun migrate(db: SupportSQLiteDatabase) {
-
                 db.execSQL("""
                     CREATE TABLE IF NOT EXISTS stores (
                         id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
@@ -189,16 +153,19 @@ abstract class PurchaseDatabase : RoomDatabase() {
             }
         }
 
-        // Migration 3 vers 4 : création des budgets mensuels
         private val MIGRATION_3_4 = object : Migration(3, 4) {
             override fun migrate(db: SupportSQLiteDatabase) {
-
                 db.execSQL("""
                     CREATE TABLE IF NOT EXISTS monthly_budgets (
-                        month TEXT NOT NULL PRIMARY KEY,
-                        amount REAL NOT NULL,
-                        currency TEXT NOT NULL
+                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        month TEXT NOT NULL,
+                        amount REAL NOT NULL
                     )
+                """)
+
+                db.execSQL("""
+                    CREATE UNIQUE INDEX IF NOT EXISTS index_monthly_budgets_month
+                    ON monthly_budgets(month)
                 """)
             }
         }
