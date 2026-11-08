@@ -1,3 +1,4 @@
+
 package com.monpanier.app
 
 import android.Manifest
@@ -57,7 +58,7 @@ import kotlin.math.abs
 import java.util.Locale
 
 private enum class Screen {
-    HOME, SCAN, CROP, REVIEW, HISTORY, STATS, PRICES, BASKET, SETTINGS
+    HOME, SCAN, CROP, REVIEW, HISTORY, STATS, PRICES, BASKET, SETTINGS, STORES
 }
 
 private enum class AppLang { FR, AR }
@@ -85,11 +86,15 @@ class MainActivity : ComponentActivity() {
 @Composable
 private fun MonPanierV2() {
     val context = LocalContext.current
+
     val dao = remember {
         PurchaseDatabase.get(context).purchaseDao()
     }
 
     val purchases by dao.observeAll().collectAsState(initial = emptyList())
+
+    // Répertoire permanent des magasins
+    val stores by dao.observeStores().collectAsState(initial = emptyList())
 
     val prefs = remember {
         context.getSharedPreferences("settings", Context.MODE_PRIVATE)
@@ -346,20 +351,33 @@ private fun MonPanierV2() {
                 }
 
                 Screen.REVIEW -> ReviewScreen(
-                    pad,
-                    isAr,
-                    fg,
-                    card,
-                    store,
-                    { store = it },
-                    ticketNumber,
-                    { ticketNumber = it },
-                    drafts,
-                    { drafts = it },
-                    ocrText,
+                    pad = pad,
+                    ar = isAr,
+                    fg = fg,
+                    card = card,
+                    stores = stores,
+                    onAddStore = { name ->
+                        val cleanName = name.trim()
+                        if (cleanName.isNotBlank()) {
+                            scope.launch {
+                                dao.insertStoreIfAbsent(
+                                    StoreEntity(name = cleanName)
+                                )
+                                store = cleanName
+                            }
+                        }
+                    },
+                    store = store,
+                    onStore = { store = it },
+                    ticketNumber = ticketNumber,
+                    onTicketNumber = { ticketNumber = it },
+                    drafts = drafts,
+                    onDrafts = { drafts = it },
+                    raw = ocrText,
                     onSave = {
                         val rid = ReceiptParser.receiptId()
                         val number = ticketNumber.trim()
+                        val storeName = store.trim().ifBlank { "Magasin" }
 
                         val rows = drafts.mapNotNull { d ->
                             val q = d.quantity
@@ -384,7 +402,7 @@ private fun MonPanierV2() {
                             } else {
                                 PurchaseEntity(
                                     receiptDate = ReceiptParser.today(),
-                                    store = store.ifBlank { "Magasin" },
+                                    store = storeName,
                                     product = d.product,
                                     quantity = q,
                                     unitPrice = price,
@@ -398,7 +416,13 @@ private fun MonPanierV2() {
 
                         scope.launch {
                             if (rows.isNotEmpty()) {
+                                // Enregistre le magasin indépendamment du ticket
+                                dao.insertStoreIfAbsent(
+                                    StoreEntity(name = storeName)
+                                )
+
                                 dao.insertAll(rows)
+
                                 ticketNumber = ""
                                 store = ""
 
@@ -447,25 +471,39 @@ private fun MonPanierV2() {
                 )
 
                 Screen.SETTINGS -> SettingsV2(
-                    pad,
-                    dark,
-                    {
+                    pad = pad,
+                    dark = dark,
+                    onDark = {
                         dark = it
                         prefs.edit().putBoolean("dark", it).apply()
                     },
-                    money,
-                    {
+                    money = money,
+                    onMoney = {
                         money = it
                         prefs.edit().putString("money", it.name).apply()
                     },
-                    lang,
-                    {
+                    lang = lang,
+                    onLang = {
                         lang = it
                         prefs.edit().putString("lang", it.name).apply()
                     },
-                    isAr,
-                    fg,
-                    card
+                    ar = isAr,
+                    fg = fg,
+                    card = card,
+                    onStores = {
+                        screen = Screen.STORES
+                    }
+                )
+
+                Screen.STORES -> StoreDirectoryScreen(
+                    pad = pad,
+                    stores = stores,
+                    fg = fg,
+                    card = card,
+                    dao = dao,
+                    onBack = {
+                        screen = Screen.SETTINGS
+                    }
                 )
             }
         }
@@ -1121,14 +1159,17 @@ private fun CropScreen(
     }
 }
 
-/* ÉCRAN DE VÉRIFICATION */
+/* ÉCRAN DE VÉRIFICATION AVEC RÉPERTOIRE DES MAGASINS */
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ReviewScreen(
     pad: PaddingValues,
     ar: Boolean,
     fg: Color,
     card: Color,
+    stores: List<StoreEntity>,
+    onAddStore: (String) -> Unit,
     store: String,
     onStore: (String) -> Unit,
     ticketNumber: String,
@@ -1139,6 +1180,10 @@ private fun ReviewScreen(
     onSave: () -> Unit,
     onRescan: () -> Unit
 ) {
+    var expanded by remember { mutableStateOf(false) }
+    var showAddStore by remember { mutableStateOf(false) }
+    var newStoreName by remember { mutableStateOf("") }
+
     Column(
         Modifier.fillMaxSize().padding(pad).padding(14.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
@@ -1150,13 +1195,77 @@ private fun ReviewScreen(
             color = fg
         )
 
-        OutlinedTextField(
-            value = store,
-            onValueChange = onStore,
-            label = { Text(if (ar) "المتجر" else "Magasin") },
-            modifier = Modifier.fillMaxWidth(),
-            singleLine = true
-        )
+        // Choix d'un magasin déjà enregistré
+        ExposedDropdownMenuBox(
+            expanded = expanded,
+            onExpandedChange = { expanded = !expanded }
+        ) {
+            OutlinedTextField(
+                value = store,
+                onValueChange = onStore,
+                label = {
+                    Text(if (ar) "المتجر" else "Magasin")
+                },
+                placeholder = {
+                    Text(if (ar) "اختر متجراً" else "Choisir un magasin")
+                },
+                trailingIcon = {
+                    ExposedDropdownMenuDefaults.TrailingIcon(
+                        expanded = expanded
+                    )
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .menuAnchor(),
+                singleLine = true,
+                colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors()
+            )
+
+            ExposedDropdownMenu(
+                expanded = expanded,
+                onDismissRequest = { expanded = false }
+            ) {
+                stores.forEach { item ->
+                    DropdownMenuItem(
+                        text = { Text(item.name) },
+                        onClick = {
+                            onStore(item.name)
+                            expanded = false
+                        }
+                    )
+                }
+
+                if (stores.isEmpty()) {
+                    DropdownMenuItem(
+                        text = {
+                            Text(
+                                if (ar) "لا توجد متاجر مسجلة"
+                                else "Aucun magasin enregistré"
+                            )
+                        },
+                        onClick = {
+                            expanded = false
+                        },
+                        enabled = false
+                    )
+                }
+            }
+        }
+
+        OutlinedButton(
+            onClick = {
+                newStoreName = ""
+                showAddStore = true
+            },
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Icon(Icons.Default.Add, null)
+            Spacer(Modifier.width(8.dp))
+            Text(
+                if (ar) "إضافة متجر جديد"
+                else "Ajouter un nouveau magasin"
+            )
+        }
 
         OutlinedTextField(
             value = ticketNumber,
@@ -1232,7 +1341,9 @@ private fun ReviewScreen(
                                         }
                                     )
                                 },
-                                label = { Text(if (ar) "الكمية" else "Qté") },
+                                label = {
+                                    Text(if (ar) "الكمية" else "Qté")
+                                },
                                 modifier = Modifier.weight(1f),
                                 singleLine = true
                             )
@@ -1262,7 +1373,9 @@ private fun ReviewScreen(
                                         }
                                     )
                                 },
-                                label = { Text(if (ar) "المجموع" else "Total") },
+                                label = {
+                                    Text(if (ar) "المجموع" else "Total")
+                                },
                                 modifier = Modifier.weight(1f),
                                 singleLine = true
                             )
@@ -1293,6 +1406,53 @@ private fun ReviewScreen(
             else "Important : l'OCR peut se tromper. Vérifie chaque ligne avant de sauvegarder.",
             fontSize = 11.sp,
             color = fg.copy(alpha = .6f)
+        )
+    }
+
+    // Fenêtre d'ajout rapide d'un magasin
+    if (showAddStore) {
+        AlertDialog(
+            onDismissRequest = {
+                showAddStore = false
+            },
+            title = {
+                Text(
+                    if (ar) "إضافة متجر" else "Ajouter un magasin"
+                )
+            },
+            text = {
+                OutlinedTextField(
+                    value = newStoreName,
+                    onValueChange = { newStoreName = it },
+                    label = {
+                        Text(if (ar) "اسم المتجر" else "Nom du magasin")
+                    },
+                    singleLine = true
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val name = newStoreName.trim()
+
+                        if (name.isNotBlank()) {
+                            onAddStore(name)
+                            showAddStore = false
+                        }
+                    }
+                ) {
+                    Text(if (ar) "حفظ" else "Ajouter")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        showAddStore = false
+                    }
+                ) {
+                    Text(if (ar) "إلغاء" else "Annuler")
+                }
+            }
         )
     }
 }
@@ -1944,7 +2104,8 @@ private fun SettingsV2(
     onLang: (AppLang) -> Unit,
     ar: Boolean,
     fg: Color,
-    card: Color
+    card: Color,
+    onStores: () -> Unit
 ) {
     Column(
         Modifier.fillMaxSize().padding(pad).padding(16.dp),
@@ -1956,6 +2117,34 @@ private fun SettingsV2(
             fontWeight = FontWeight.Bold,
             color = fg
         )
+
+        // Accès au répertoire permanent des magasins
+        Card(
+            colors = CardDefaults.cardColors(containerColor = card)
+        ) {
+            Column(Modifier.padding(14.dp)) {
+                Text(
+                    if (ar) "إدارة المتاجر"
+                    else "Gestion des magasins",
+                    fontWeight = FontWeight.Bold,
+                    color = fg
+                )
+
+                Spacer(Modifier.height(8.dp))
+
+                Button(
+                    onClick = onStores,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(Icons.Default.Store, null)
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        if (ar) "دليل المتاجر"
+                        else "Répertoire des magasins"
+                    )
+                }
+            }
+        }
 
         Card(
             colors = CardDefaults.cardColors(containerColor = card)
