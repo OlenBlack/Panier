@@ -1,4 +1,3 @@
-
 package com.monpanier.app
 
 import android.content.Context
@@ -47,6 +46,10 @@ data class BudgetEntity(
 @Dao
 interface PurchaseDao {
 
+    // --------------------------------------------------
+    // ACHATS
+    // --------------------------------------------------
+
     @Query("SELECT * FROM purchases ORDER BY id DESC")
     fun observeAll(): Flow<List<PurchaseEntity>>
 
@@ -65,11 +68,14 @@ interface PurchaseDao {
     @Query("DELETE FROM purchases WHERE id = :purchaseId")
     suspend fun deletePurchase(purchaseId: Long)
 
-    @Query("SELECT * FROM purchases")
+    @Query("SELECT * FROM purchases ORDER BY id ASC")
     suspend fun getAll(): List<PurchaseEntity>
 
     @Query("DELETE FROM purchases")
     suspend fun clearAll()
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun restorePurchases(items: List<PurchaseEntity>)
 
     @Query("""
         SELECT * FROM purchases
@@ -78,10 +84,15 @@ interface PurchaseDao {
     """)
     suspend fun searchByTicketNumber(number: String): List<PurchaseEntity>
 
-    // Répertoire des magasins
+    // --------------------------------------------------
+    // MAGASINS
+    // --------------------------------------------------
 
     @Query("SELECT * FROM stores ORDER BY name COLLATE NOCASE")
     fun observeStores(): Flow<List<StoreEntity>>
+
+    @Query("SELECT * FROM stores ORDER BY id ASC")
+    suspend fun getAllStores(): List<StoreEntity>
 
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertStoreIfAbsent(store: StoreEntity): Long
@@ -92,16 +103,33 @@ interface PurchaseDao {
     @Query("DELETE FROM stores WHERE id = :storeId")
     suspend fun deleteStore(storeId: Long)
 
-    // Budgets mensuels
+    @Query("DELETE FROM stores")
+    suspend fun clearStores()
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun restoreStores(items: List<StoreEntity>)
+
+    // --------------------------------------------------
+    // BUDGETS MENSUELS
+    // --------------------------------------------------
 
     @Query("SELECT * FROM monthly_budgets ORDER BY month DESC")
     fun observeBudgets(): Flow<List<BudgetEntity>>
+
+    @Query("SELECT * FROM monthly_budgets ORDER BY id ASC")
+    suspend fun getAllBudgets(): List<BudgetEntity>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun saveBudget(budget: BudgetEntity)
 
     @Query("DELETE FROM monthly_budgets WHERE id = :budgetId")
     suspend fun deleteBudget(budgetId: Long)
+
+    @Query("DELETE FROM monthly_budgets")
+    suspend fun clearBudgets()
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun restoreBudgets(items: List<BudgetEntity>)
 }
 
 @Database(
@@ -132,6 +160,7 @@ abstract class PurchaseDatabase : RoomDatabase() {
 
         private val MIGRATION_2_3 = object : Migration(2, 3) {
             override fun migrate(db: SupportSQLiteDatabase) {
+
                 db.execSQL("""
                     CREATE TABLE IF NOT EXISTS stores (
                         id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
@@ -155,6 +184,7 @@ abstract class PurchaseDatabase : RoomDatabase() {
 
         private val MIGRATION_3_4 = object : Migration(3, 4) {
             override fun migrate(db: SupportSQLiteDatabase) {
+
                 db.execSQL("""
                     CREATE TABLE IF NOT EXISTS monthly_budgets (
                         id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
@@ -172,6 +202,7 @@ abstract class PurchaseDatabase : RoomDatabase() {
 
         fun get(context: Context): PurchaseDatabase =
             INSTANCE ?: synchronized(this) {
+
                 INSTANCE ?: Room.databaseBuilder(
                     context.applicationContext,
                     PurchaseDatabase::class.java,
@@ -183,7 +214,9 @@ abstract class PurchaseDatabase : RoomDatabase() {
                         MIGRATION_3_4
                     )
                     .build()
-                    .also { INSTANCE = it }
+                    .also {
+                        INSTANCE = it
+                    }
             }
     }
 }
