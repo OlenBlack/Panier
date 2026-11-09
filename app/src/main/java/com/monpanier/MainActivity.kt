@@ -156,12 +156,6 @@ private fun MonPanierV2() {
         context.getSharedPreferences(
             "settings",
             Context.MODE_PRIVATE
-
-DriveSyncSettingsCard(
-    fg = fg,
-    card = card,
-    ar = ar
-)
             
         )
     }
@@ -2808,7 +2802,13 @@ private fun StatsV2(
 
 /* PARAMÈTRES */
 
+DriveSyncSettingsCard(
+    fg = fg,
+    card = card,
+    ar = ar
+)
 @Composable
+
 private fun SettingsV2(
     pad: PaddingValues,
     dark: Boolean,
