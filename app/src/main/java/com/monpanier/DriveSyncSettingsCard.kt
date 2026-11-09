@@ -51,6 +51,8 @@ fun DriveSyncSettingsCard(
                 loading = true
 
                 DriveSyncManager.setConnected(context, true)
+                
+                DriveSyncWorker.schedulePeriodic(context)
 
                 DriveSyncManager.synchronize(
                     context = context,
