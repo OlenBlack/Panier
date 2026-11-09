@@ -137,8 +137,6 @@ private fun MonPanierV2() {
 
     val context = LocalContext.current
 
-    DriveSyncObserver()
-
     val dao = remember {
         PurchaseDatabase.get(context).purchaseDao()
     }
@@ -2832,12 +2830,7 @@ private fun SettingsV2(
             fontWeight = FontWeight.Bold,
             color = fg
         )
-        
-DriveSyncSettingsCard(
-    fg = fg,
-    card = card,
-    ar = ar
-)
+    
         /* GESTION DES MAGASINS */
 
         Card(
