@@ -2802,12 +2802,6 @@ private fun StatsV2(
 
 /* PARAMÈTRES */
 
-DriveSyncSettingsCard(
-    fg = fg,
-    card = card,
-    ar = ar
-)
-@Composable
 
 private fun SettingsV2(
     pad: PaddingValues,
