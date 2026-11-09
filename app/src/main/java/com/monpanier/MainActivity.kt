@@ -136,6 +136,8 @@ private fun SplashScreen() {
 private fun MonPanierV2() {
 
     val context = LocalContext.current
+    
+LocalBackupObserver()
 
     val dao = remember {
         PurchaseDatabase.get(context).purchaseDao()
@@ -2830,7 +2832,12 @@ private fun SettingsV2(
             fontWeight = FontWeight.Bold,
             color = fg
         )
-    
+        
+    LocalBackupSettingsCard(
+    fg = fg,
+    card = card,
+    ar = ar
+)
         /* GESTION DES MAGASINS */
 
         Card(
