@@ -17,7 +17,7 @@ import kotlinx.coroutines.launch
 @Composable
 fun LocalBackupObserver() {
 
-    val context = LocalContext.current
+    val context = LocalContext.current.applicationContext
 
     val database = remember {
         PurchaseDatabase.get(context)
@@ -36,6 +36,7 @@ fun LocalBackupObserver() {
             "stores",
             "monthly_budgets"
         ) {
+
             override fun onInvalidated(tables: Set<String>) {
 
                 if (!LocalBackupManager.hasBackupFolder(context)) {
@@ -45,11 +46,14 @@ fun LocalBackupObserver() {
                 pendingJob?.cancel()
 
                 pendingJob = scope.launch {
+
                     delay(1000)
 
                     try {
                         LocalBackupManager.backup(context)
+
                     } catch (e: Exception) {
+
                         android.util.Log.e(
                             "LocalBackup",
                             "Sauvegarde automatique impossible",
