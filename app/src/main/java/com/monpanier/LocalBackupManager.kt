@@ -7,9 +7,15 @@ import android.provider.DocumentsContract
 import androidx.room.withTransaction
 import org.json.JSONArray
 import org.json.JSONObject
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
 
 object LocalBackupManager {
+    
+    private val _lastBackupUpdates = MutableStateFlow<Long?>(null)
 
+    val lastBackupUpdates = _lastBackupUpdates.asStateFlow()
+    
     private const val PREFS = "mon_panier_local_backup"
     private const val FOLDER_URI = "backup_folder_uri"
     private const val LAST_BACKUP = "last_backup_timestamp"
@@ -165,9 +171,13 @@ object LocalBackupManager {
             "Impossible d'écrire le fichier JSON."
         )
 
-        prefs(context).edit()
-            .putLong(LAST_BACKUP, System.currentTimeMillis())
-            .apply()
+        val timestamp = System.currentTimeMillis()
+
+prefs(context).edit()
+    .putLong(LAST_BACKUP, timestamp)
+    .apply()
+
+_lastBackupUpdates.value = timestamp
     }
 
     suspend fun restore(context: Context, sourceUri: Uri) {
