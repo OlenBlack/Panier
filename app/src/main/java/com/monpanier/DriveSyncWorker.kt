@@ -1,6 +1,8 @@
+
 package com.monpanier.app
 
 import android.content.Context
+import androidx.work.BackoffPolicy
 import androidx.work.Constraints
 import androidx.work.CoroutineWorker
 import androidx.work.ExistingPeriodicWorkPolicy
@@ -18,42 +20,52 @@ class DriveSyncWorker(
 ) : CoroutineWorker(context, params) {
 
     override suspend fun doWork(): Result {
+
         if (!DriveSyncManager.isConnected(applicationContext)) {
             return Result.success()
         }
 
         return try {
+
             val token = DriveSyncManager.getSilentAccessToken(
                 applicationContext
             )
 
             DriveSyncManager.synchronize(
-                applicationContext,
-                token
+                context = applicationContext,
+                accessToken = token
             )
 
             Result.success()
 
         } catch (e: DriveAuthorizationRequiredException) {
+
             DriveSyncManager.setStatus(
                 applicationContext,
                 "Reconnecte Google Drive dans les paramètres"
             )
+
             Result.success()
 
         } catch (e: Exception) {
+
             DriveSyncManager.setStatus(
                 applicationContext,
-                "Synchronisation en attente : ${e.localizedMessage ?: "erreur réseau"}"
+                "Synchronisation en attente : " +
+                    (e.localizedMessage ?: "erreur réseau")
             )
+
             Result.retry()
         }
     }
 
     companion object {
 
-        private const val UNIQUE_ONETIME = "mon_panier_drive_sync"
-        private const val UNIQUE_PERIODIC = "mon_panier_drive_periodic"
+        private const val UNIQUE_ONETIME =
+            "mon_panier_drive_sync"
+
+        private const val UNIQUE_PERIODIC =
+            "mon_panier_drive_periodic"
 
         private fun networkConstraints(): Constraints {
             return Constraints.Builder()
@@ -62,32 +74,54 @@ class DriveSyncWorker(
         }
 
         fun enqueue(context: Context) {
-            val request = OneTimeWorkRequestBuilder<DriveSyncWorker>()
-                .setConstraints(networkConstraints())
-                .build()
 
-            WorkManager.getInstance(context).enqueueUniqueWork(
-                UNIQUE_ONETIME,
-                ExistingWorkPolicy.KEEP,
-                request
-            )
+            val request =
+                OneTimeWorkRequestBuilder<DriveSyncWorker>()
+                    .setConstraints(networkConstraints())
+                    .setBackoffCriteria(
+                        BackoffPolicy.EXPONENTIAL,
+                        30,
+                        TimeUnit.SECONDS
+                    )
+                    .build()
+
+            WorkManager.getInstance(context.applicationContext)
+                .enqueueUniqueWork(
+                    UNIQUE_ONETIME,
+                    ExistingWorkPolicy.KEEP,
+                    request
+                )
         }
 
         fun schedulePeriodic(context: Context) {
+
             val request =
                 PeriodicWorkRequestBuilder<DriveSyncWorker>(
                     12,
                     TimeUnit.HOURS
                 )
                     .setConstraints(networkConstraints())
+                    .setBackoffCriteria(
+                        BackoffPolicy.EXPONENTIAL,
+                        30,
+                        TimeUnit.SECONDS
+                    )
                     .build()
 
-            WorkManager.getInstance(context)
+            WorkManager.getInstance(context.applicationContext)
                 .enqueueUniquePeriodicWork(
                     UNIQUE_PERIODIC,
                     ExistingPeriodicWorkPolicy.KEEP,
                     request
                 )
+        }
+
+        fun cancelAll(context: Context) {
+            WorkManager.getInstance(context.applicationContext)
+                .cancelUniqueWork(UNIQUE_ONETIME)
+
+            WorkManager.getInstance(context.applicationContext)
+                .cancelUniqueWork(UNIQUE_PERIODIC)
         }
     }
 }
