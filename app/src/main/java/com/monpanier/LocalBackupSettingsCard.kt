@@ -15,6 +15,7 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 import java.text.DateFormat
 import java.util.Date
+import androidx.compose.runtime.collectAsState
 
 @Composable
 fun LocalBackupSettingsCard(
@@ -28,12 +29,10 @@ fun LocalBackupSettingsCard(
     var message by remember {
         mutableStateOf("")
     }
-
-    var lastBackup by remember {
-        mutableLongStateOf(
-            LocalBackupManager.getLastBackup(context)
-        )
-    }
+    
+val lastBackup by LocalBackupManager.lastBackupUpdates.collectAsState(
+    initial = LocalBackupManager.getLastBackup(context)
+)
 
     val folderPicker = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocumentTree()
