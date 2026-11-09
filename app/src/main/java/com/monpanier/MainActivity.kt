@@ -2802,7 +2802,7 @@ private fun StatsV2(
 
 /* PARAMÈTRES */
 
-
+@Composable
 private fun SettingsV2(
     pad: PaddingValues,
     dark: Boolean,
