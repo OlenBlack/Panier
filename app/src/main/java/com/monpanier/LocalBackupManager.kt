@@ -2,6 +2,7 @@
 package com.monpanier.app
 
 import android.content.Context
+import android.content.Intent
 import android.net.Uri
 import android.provider.DocumentsContract
 import androidx.room.withTransaction
@@ -11,11 +12,10 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
 object LocalBackupManager {
-    
-    private val _lastBackupUpdates = MutableStateFlow<Long?>(null)
 
+    private val _lastBackupUpdates = MutableStateFlow<Long?>(null)
     val lastBackupUpdates = _lastBackupUpdates.asStateFlow()
-    
+
     private const val PREFS = "mon_panier_local_backup"
     private const val FOLDER_URI = "backup_folder_uri"
     private const val LAST_BACKUP = "last_backup_timestamp"
@@ -26,14 +26,28 @@ object LocalBackupManager {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
     fun hasBackupFolder(context: Context): Boolean {
-        return !prefs(context).getString(FOLDER_URI, null).isNullOrEmpty()
+        val folder = prefs(context).getString(FOLDER_URI, null)
+            ?: return false
+
+        return try {
+            val uri = Uri.parse(folder)
+            context.contentResolver.query(
+                uri,
+                arrayOf(DocumentsContract.Document.COLUMN_DOCUMENT_ID),
+                null,
+                null,
+                null
+            )?.use { true } ?: false
+        } catch (e: Exception) {
+            false
+        }
     }
 
     fun saveFolderPermission(context: Context, uri: Uri) {
         context.contentResolver.takePersistableUriPermission(
             uri,
-            android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or
-                android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+            Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                Intent.FLAG_GRANT_WRITE_URI_PERMISSION
         )
 
         prefs(context).edit()
@@ -45,13 +59,23 @@ object LocalBackupManager {
         return prefs(context).getLong(LAST_BACKUP, 0L)
     }
 
+    private fun updateLastBackup(context: Context, timestamp: Long) {
+        prefs(context).edit()
+            .putLong(LAST_BACKUP, timestamp)
+            .apply()
+
+        _lastBackupUpdates.value = timestamp
+    }
+
     suspend fun backup(context: Context) {
+
         val folderString = prefs(context).getString(FOLDER_URI, null)
             ?: throw IllegalStateException(
                 "Aucun dossier de sauvegarde sélectionné."
             )
 
         val folderUri = Uri.parse(folderString)
+        val resolver = context.contentResolver
 
         val database = PurchaseDatabase.get(context)
         val dao = database.purchaseDao()
@@ -60,9 +84,12 @@ object LocalBackupManager {
         val stores = dao.getAllStores()
         val budgets = dao.getAllBudgets()
 
+        val timestamp = System.currentTimeMillis()
+
         val json = JSONObject().apply {
+
             put("formatVersion", 1)
-            put("savedAt", System.currentTimeMillis())
+            put("savedAt", timestamp)
 
             put("purchases", JSONArray().apply {
                 purchases.forEach { item ->
@@ -101,7 +128,6 @@ object LocalBackupManager {
             })
         }
 
-        val resolver = context.contentResolver
         val treeId = DocumentsContract.getTreeDocumentId(folderUri)
 
         val childrenUri =
@@ -132,7 +158,9 @@ object LocalBackupManager {
             )
 
             while (cursor.moveToNext()) {
-                if (cursor.getString(nameIndex) == FILE_NAME) {
+                if (
+                    cursor.getString(nameIndex) == FILE_NAME
+                ) {
                     backupUri =
                         DocumentsContract.buildDocumentUriUsingTree(
                             folderUri,
@@ -144,6 +172,7 @@ object LocalBackupManager {
         }
 
         if (backupUri == null) {
+
             val parentUri =
                 DocumentsContract.buildDocumentUriUsingTree(
                     folderUri,
@@ -163,24 +192,20 @@ object LocalBackupManager {
                 "Impossible de créer le fichier de sauvegarde."
             )
 
-        resolver.openOutputStream(destination, "wt")?.bufferedWriter(
-            Charsets.UTF_8
-        )?.use { writer ->
-            writer.write(json.toString(2))
-        } ?: throw IllegalStateException(
-            "Impossible d'écrire le fichier JSON."
-        )
+        resolver.openOutputStream(destination, "wt")
+            ?.bufferedWriter(Charsets.UTF_8)
+            ?.use { writer ->
+                writer.write(json.toString(2))
+            }
+            ?: throw IllegalStateException(
+                "Impossible d'écrire le fichier JSON."
+            )
 
-        val timestamp = System.currentTimeMillis()
-
-prefs(context).edit()
-    .putLong(LAST_BACKUP, timestamp)
-    .apply()
-
-_lastBackupUpdates.value = timestamp
+        updateLastBackup(context, timestamp)
     }
 
     suspend fun restore(context: Context, sourceUri: Uri) {
+
         val jsonText = context.contentResolver
             .openInputStream(sourceUri)
             ?.bufferedReader(Charsets.UTF_8)
@@ -193,6 +218,14 @@ _lastBackupUpdates.value = timestamp
 
         require(root.optInt("formatVersion", -1) == 1) {
             "Format de sauvegarde non reconnu."
+        }
+
+        require(
+            root.has("purchases") &&
+            root.has("stores") &&
+            root.has("budgets")
+        ) {
+            "Fichier de sauvegarde incomplet."
         }
 
         val purchaseArray = root.getJSONArray("purchases")
@@ -250,9 +283,8 @@ _lastBackupUpdates.value = timestamp
         val database = PurchaseDatabase.get(context)
         val dao = database.purchaseDao()
 
-        // La restauration remplace les données locales.
-        // La transaction évite une restauration partielle.
         database.withTransaction {
+
             dao.clearAll()
             dao.clearStores()
             dao.clearBudgets()
@@ -268,6 +300,12 @@ _lastBackupUpdates.value = timestamp
             if (budgets.isNotEmpty()) {
                 dao.restoreBudgets(budgets)
             }
+        }
+
+        val savedAt = root.optLong("savedAt", 0L)
+
+        if (savedAt > 0L) {
+            updateLastBackup(context, savedAt)
         }
     }
 }
