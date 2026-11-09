@@ -1,3 +1,4 @@
+
 package com.monpanier.app
 
 import android.content.Context
@@ -43,12 +44,23 @@ data class BudgetEntity(
     val amount: Double
 )
 
+@Entity(tableName = "shopping_list")
+data class ShoppingListEntity(
+    @PrimaryKey(autoGenerate = true)
+    val id: Long = 0,
+    val product: String,
+    val quantity: Double,
+    val currency: String,
+    val store: String = "",
+    val estimatedUnitPrice: Double? = null,
+    val priceDate: String = "",
+    val checked: Boolean = false
+)
+
 @Dao
 interface PurchaseDao {
 
-    // --------------------------------------------------
     // ACHATS
-    // --------------------------------------------------
 
     @Query("SELECT * FROM purchases ORDER BY id DESC")
     fun observeAll(): Flow<List<PurchaseEntity>>
@@ -84,9 +96,7 @@ interface PurchaseDao {
     """)
     suspend fun searchByTicketNumber(number: String): List<PurchaseEntity>
 
-    // --------------------------------------------------
     // MAGASINS
-    // --------------------------------------------------
 
     @Query("SELECT * FROM stores ORDER BY name COLLATE NOCASE")
     fun observeStores(): Flow<List<StoreEntity>>
@@ -109,9 +119,7 @@ interface PurchaseDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun restoreStores(items: List<StoreEntity>)
 
-    // --------------------------------------------------
-    // BUDGETS MENSUELS
-    // --------------------------------------------------
+    // BUDGETS
 
     @Query("SELECT * FROM monthly_budgets ORDER BY month DESC")
     fun observeBudgets(): Flow<List<BudgetEntity>>
@@ -130,15 +138,39 @@ interface PurchaseDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun restoreBudgets(items: List<BudgetEntity>)
+
+    // LISTE DE COURSES
+
+    @Query("SELECT * FROM shopping_list ORDER BY store COLLATE NOCASE, product COLLATE NOCASE")
+    fun observeShoppingList(): Flow<List<ShoppingListEntity>>
+
+    @Query("SELECT * FROM shopping_list ORDER BY id ASC")
+    suspend fun getAllShoppingItems(): List<ShoppingListEntity>
+
+    @Insert
+    suspend fun insertShoppingItem(item: ShoppingListEntity)
+
+    @Update
+    suspend fun updateShoppingItem(item: ShoppingListEntity)
+
+    @Query("DELETE FROM shopping_list WHERE id = :itemId")
+    suspend fun deleteShoppingItem(itemId: Long)
+
+    @Query("DELETE FROM shopping_list")
+    suspend fun clearShoppingList()
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun restoreShoppingItems(items: List<ShoppingListEntity>)
 }
 
 @Database(
     entities = [
         PurchaseEntity::class,
         StoreEntity::class,
-        BudgetEntity::class
+        BudgetEntity::class,
+        ShoppingListEntity::class
     ],
-    version = 4,
+    version = 5,
     exportSchema = false
 )
 abstract class PurchaseDatabase : RoomDatabase() {
@@ -160,19 +192,16 @@ abstract class PurchaseDatabase : RoomDatabase() {
 
         private val MIGRATION_2_3 = object : Migration(2, 3) {
             override fun migrate(db: SupportSQLiteDatabase) {
-
                 db.execSQL("""
                     CREATE TABLE IF NOT EXISTS stores (
                         id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
                         name TEXT NOT NULL
                     )
                 """)
-
                 db.execSQL("""
                     CREATE UNIQUE INDEX IF NOT EXISTS index_stores_name
                     ON stores(name)
                 """)
-
                 db.execSQL("""
                     INSERT OR IGNORE INTO stores(name)
                     SELECT DISTINCT TRIM(store)
@@ -184,7 +213,6 @@ abstract class PurchaseDatabase : RoomDatabase() {
 
         private val MIGRATION_3_4 = object : Migration(3, 4) {
             override fun migrate(db: SupportSQLiteDatabase) {
-
                 db.execSQL("""
                     CREATE TABLE IF NOT EXISTS monthly_budgets (
                         id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
@@ -192,7 +220,6 @@ abstract class PurchaseDatabase : RoomDatabase() {
                         amount REAL NOT NULL
                     )
                 """)
-
                 db.execSQL("""
                     CREATE UNIQUE INDEX IF NOT EXISTS index_monthly_budgets_month
                     ON monthly_budgets(month)
@@ -200,9 +227,25 @@ abstract class PurchaseDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS shopping_list (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        product TEXT NOT NULL,
+                        quantity REAL NOT NULL,
+                        currency TEXT NOT NULL,
+                        store TEXT NOT NULL,
+                        estimatedUnitPrice REAL,
+                        priceDate TEXT NOT NULL,
+                        checked INTEGER NOT NULL
+                    )
+                """)
+            }
+        }
+
         fun get(context: Context): PurchaseDatabase =
             INSTANCE ?: synchronized(this) {
-
                 INSTANCE ?: Room.databaseBuilder(
                     context.applicationContext,
                     PurchaseDatabase::class.java,
@@ -211,12 +254,11 @@ abstract class PurchaseDatabase : RoomDatabase() {
                     .addMigrations(
                         MIGRATION_1_2,
                         MIGRATION_2_3,
-                        MIGRATION_3_4
+                        MIGRATION_3_4,
+                        MIGRATION_4_5
                     )
                     .build()
-                    .also {
-                        INSTANCE = it
-                    }
+                    .also { INSTANCE = it }
             }
     }
 }
