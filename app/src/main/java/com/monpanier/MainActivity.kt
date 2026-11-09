@@ -29,6 +29,8 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
 
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -205,6 +207,11 @@ private fun MonPanierV2() {
 
     val scope = rememberCoroutineScope()
 
+    // État du menu latéral
+    val drawerState = rememberDrawerState(
+        initialValue = DrawerValue.Closed
+    )
+
     val green =
         if (dark) Color(0xFF70D9A0)
         else Color(0xFF078A4B)
@@ -304,392 +311,371 @@ private fun MonPanierV2() {
         }
     ) {
 
-        Scaffold(
-            containerColor = bg,
+        ModalNavigationDrawer(
+            drawerState = drawerState,
+            gesturesEnabled = true,
 
-            topBar = {
-                TopAppBarV2(
-                    isAr,
-                    fg,
-                    green,
-                    { screen = Screen.SETTINGS }
-                )
-            },
+            drawerContent = {
+                ModalDrawerSheet(
+                    modifier = Modifier.width(280.dp),
+                    drawerContainerColor = card
+                ) {
+                    AppDrawerV2(
+                        current = screen,
+                        ar = isAr,
+                        fg = fg,
+                        green = green,
+                        onNavigate = { destination ->
 
-            bottomBar = {
-                NavigationBar(containerColor = card) {
+                            screen = destination
 
-                    NavItem(
-                        screen == Screen.HOME,
-                        { screen = Screen.HOME },
-                        Icons.Default.Home,
-                        if (isAr) "الرئيسية" else "Accueil"
-                    )
-
-                    NavItem(
-                        screen == Screen.STATS,
-                        { screen = Screen.STATS },
-                        Icons.Default.BarChart,
-                        if (isAr) "إحصائيات" else "Stats"
-                    )
-
-                    NavItem(
-                        screen == Screen.HISTORY,
-                        { screen = Screen.HISTORY },
-                        Icons.Default.ReceiptLong,
-                        if (isAr) "السجل" else "Achats"
-                    )
-
-                    NavItem(
-                        screen == Screen.BASKET,
-                        { screen = Screen.BASKET },
-                        Icons.Default.ShoppingCart,
-                        if (isAr) "السلة" else "Panier"
-                    )
-
-                    NavItem(
-                        screen == Screen.PRICES,
-                        { screen = Screen.PRICES },
-                        Icons.Default.ShowChart,
-                        if (isAr) "الأسعار" else "Prix"
-                    )
-
-                    NavItem(
-                        screen == Screen.COMPARISON,
-                        { screen = Screen.COMPARISON },
-                        Icons.Default.CompareArrows,
-                        if (isAr) "مقارنة" else "Comparer"
-                    )
-
-                    NavItem(
-                        screen == Screen.SETTINGS,
-                        { screen = Screen.SETTINGS },
-                        Icons.Default.Settings,
-                        if (isAr) "إعدادات" else "Réglages"
+                            scope.launch {
+                                drawerState.close()
+                            }
+                        }
                     )
                 }
-            },
-
-            snackbarHost = {
-                SnackbarHost(snackbar)
             }
 
-        ) { pad ->
+        ) {
 
-            when (screen) {
+            Scaffold(
+                containerColor = bg,
 
-                Screen.HOME -> HomeV2(
-                    pad,
-                    purchases,
-                    money,
-                    lang,
-                    total,
-                    fg,
-                    card,
-                    { screen = Screen.SCAN },
-                    { screen = Screen.HISTORY }
-                )
-
-                Screen.SCAN -> ScannerScreen(
-                    pad = pad,
-                    ar = isAr,
-                    fg = fg,
-                    green = green,
-                    onPhoto = { bmp ->
-                        photo = bmp
-                        cropMsg = ""
-                        ocrBusy = false
-                        screen = Screen.CROP
-                    },
-                    onGallery = {
-                        galleryLauncher.launch("image/*")
-                    }
-                )
-
-                Screen.CROP -> photo?.let { p ->
-
-                    CropScreen(
-                        pad,
+                topBar = {
+                    TopAppBarV2(
                         isAr,
                         fg,
                         green,
-                        p,
-                        ocrBusy,
-                        cropMsg,
+                        {
+                            scope.launch {
+                                drawerState.open()
+                            }
+                        }
+                    )
+                },
 
-                        onConfirm = { cropped ->
+                snackbarHost = {
+                    SnackbarHost(snackbar)
+                }
 
-                            ocrBusy = true
+            ) { pad ->
+
+                when (screen) {
+
+                    Screen.HOME -> HomeV2(
+                        pad,
+                        purchases,
+                        money,
+                        lang,
+                        total,
+                        fg,
+                        card,
+                        { screen = Screen.SCAN },
+                        { screen = Screen.HISTORY }
+                    )
+
+                    Screen.SCAN -> ScannerScreen(
+                        pad = pad,
+                        ar = isAr,
+                        fg = fg,
+                        green = green,
+                        onPhoto = { bmp ->
+                            photo = bmp
                             cropMsg = ""
+                            ocrBusy = false
+                            screen = Screen.CROP
+                        },
+                        onGallery = {
+                            galleryLauncher.launch("image/*")
+                        }
+                    )
 
-                            runOcr(
-                                cropped,
+                    Screen.CROP -> photo?.let { p ->
 
-                                onDone = { text, words ->
+                        CropScreen(
+                            pad,
+                            isAr,
+                            fg,
+                            green,
+                            p,
+                            ocrBusy,
+                            cropMsg,
 
-                                    ocrBusy = false
-                                    ocrText = text
+                            onConfirm = { cropped ->
 
-                                    val columnsResult =
-                                        ReceiptParser.parseColumns(words)
+                                ocrBusy = true
+                                cropMsg = ""
 
-                                    val parsedLines =
-                                        columnsResult
-                                            ?: ReceiptParser.parse(text)
+                                runOcr(
+                                    cropped,
 
-                                    if (columnsResult == null) {
-                                        notice = if (isAr)
-                                            "لم يتم العثور على الأعمدة: قراءة بسيطة، تحقق من كل سطر"
-                                        else
-                                            "Colonnes Produit / Qté / P.U non détectées : lecture simple, vérifie chaque ligne."
-                                    }
+                                    onDone = { text, words ->
 
-                                    drafts = parsedLines.map {
-                                        Draft(
-                                            it.product,
-                                            fmtQty(it.quantity),
-                                            "%.2f".format(
-                                                Locale.US,
-                                                it.unitPrice
-                                            ),
-                                            "%.2f".format(
-                                                Locale.US,
-                                                it.total
+                                        ocrBusy = false
+                                        ocrText = text
+
+                                        val columnsResult =
+                                            ReceiptParser.parseColumns(words)
+
+                                        val parsedLines =
+                                            columnsResult
+                                                ?: ReceiptParser.parse(text)
+
+                                        if (columnsResult == null) {
+                                            notice = if (isAr)
+                                                "لم يتم العثور على الأعمدة: قراءة بسيطة، تحقق من كل سطر"
+                                            else
+                                                "Colonnes Produit / Qté / P.U non détectées : lecture simple, vérifie chaque ligne."
+                                        }
+
+                                        drafts = parsedLines.map {
+                                            Draft(
+                                                it.product,
+                                                fmtQty(it.quantity),
+                                                "%.2f".format(
+                                                    Locale.US,
+                                                    it.unitPrice
+                                                ),
+                                                "%.2f".format(
+                                                    Locale.US,
+                                                    it.total
+                                                )
                                             )
-                                        )
+                                        }
+
+                                        if (drafts.isEmpty()) {
+                                            drafts = listOf(
+                                                Draft("", "1", "", "")
+                                            )
+                                        }
+
+                                        photo = null
+                                        screen = Screen.REVIEW
+                                    },
+
+                                    onFail = { msg ->
+                                        ocrBusy = false
+                                        cropMsg = msg
                                     }
+                                )
+                            },
 
-                                    if (drafts.isEmpty()) {
-                                        drafts = listOf(
-                                            Draft("", "1", "", "")
-                                        )
-                                    }
+                            onRetake = {
+                                photo = null
+                                screen = Screen.SCAN
+                            }
+                        )
+                    }
 
-                                    photo = null
-                                    screen = Screen.REVIEW
-                                },
+                    Screen.REVIEW -> ReviewScreen(
+                        pad = pad,
+                        ar = isAr,
+                        fg = fg,
+                        card = card,
+                        stores = stores,
 
-                                onFail = { msg ->
-                                    ocrBusy = false
-                                    cropMsg = msg
+                        onAddStore = { name ->
+                            val cleanName = name.trim()
+
+                            if (cleanName.isNotBlank()) {
+                                scope.launch {
+                                    dao.insertStoreIfAbsent(
+                                        StoreEntity(name = cleanName)
+                                    )
+                                    store = cleanName
                                 }
-                            )
+                            }
                         },
 
-                        onRetake = {
-                            photo = null
+                        store = store,
+                        onStore = { store = it },
+                        ticketNumber = ticketNumber,
+                        onTicketNumber = { ticketNumber = it },
+                        drafts = drafts,
+                        onDrafts = { drafts = it },
+                        raw = ocrText,
+
+                        onSave = {
+                            val rid = ReceiptParser.receiptId()
+                            val number = ticketNumber.trim()
+                            val storeName = store.trim().ifBlank {
+                                "Magasin"
+                            }
+
+                            val rows = drafts.mapNotNull { d ->
+
+                                val q = d.quantity
+                                    .replace(',', '.')
+                                    .toDoubleOrNull()
+
+                                val price = d.unitPrice
+                                    .replace(',', '.')
+                                    .toDoubleOrNull()
+
+                                val amount = d.total
+                                    .replace(',', '.')
+                                    .toDoubleOrNull()
+
+                                if (
+                                    d.product.isBlank() ||
+                                    q == null ||
+                                    price == null ||
+                                    amount == null
+                                ) {
+                                    null
+                                } else {
+                                    PurchaseEntity(
+                                        receiptDate = ReceiptParser.today(),
+                                        store = storeName,
+                                        product = d.product,
+                                        quantity = q,
+                                        unitPrice = price,
+                                        total = amount,
+                                        currency = currencyCode,
+                                        ticketNumber = number,
+                                        receiptId = rid
+                                    )
+                                }
+                            }
+
+                            scope.launch {
+                                if (rows.isNotEmpty()) {
+
+                                    dao.insertStoreIfAbsent(
+                                        StoreEntity(name = storeName)
+                                    )
+
+                                    dao.insertAll(rows)
+
+                                    ticketNumber = ""
+                                    store = ""
+
+                                    notice = if (isAr)
+                                        "تم حفظ المشتريات"
+                                    else
+                                        "Achats enregistrés"
+
+                                    screen = Screen.HOME
+
+                                } else {
+                                    notice = if (isAr)
+                                        "تحقق من المنتجات والأسعار"
+                                    else
+                                        "Vérifie les produits et les prix."
+                                }
+                            }
+                        },
+
+                        onRescan = {
                             screen = Screen.SCAN
                         }
                     )
+
+                    Screen.HISTORY -> HistoryV2(
+                        pad = pad,
+                        rows = purchases,
+                        money = money,
+                        ar = isAr,
+                        fg = fg,
+                        card = card,
+                        dao = dao,
+                        onExport = {
+                            createXlsx.launch("MonPanier-achats.xlsx")
+                        }
+                    )
+
+                    Screen.STATS -> StatsV2(
+                        pad,
+                        purchases,
+                        money,
+                        isAr,
+                        fg,
+                        card
+                    )
+
+                    Screen.PRICES -> PriceHistoryScreen(
+                        pad,
+                        purchases,
+                        money,
+                        isAr,
+                        fg,
+                        card
+                    )
+
+                    Screen.COMPARISON -> PriceComparisonScreen(
+                        purchases = purchases,
+                        onBack = {
+                            screen = Screen.HOME
+                        }
+                    )
+
+                    Screen.BASKET -> SmartBasketScreen(
+                        pad,
+                        purchases,
+                        money,
+                        isAr,
+                        fg,
+                        card
+                    )
+
+                    Screen.SETTINGS -> SettingsV2(
+                        pad = pad,
+                        dark = dark,
+                        onDark = {
+                            dark = it
+                            prefs.edit()
+                                .putBoolean("dark", it)
+                                .apply()
+                        },
+                        money = money,
+                        onMoney = {
+                            money = it
+                            prefs.edit()
+                                .putString("money", it.name)
+                                .apply()
+                        },
+                        lang = lang,
+                        onLang = {
+                            lang = it
+                            prefs.edit()
+                                .putString("lang", it.name)
+                                .apply()
+                        },
+                        ar = isAr,
+                        fg = fg,
+                        card = card,
+                        onStores = {
+                            screen = Screen.STORES
+                        },
+                        onBudget = {
+                            screen = Screen.BUDGET
+                        },
+                        onComparison = {
+                            screen = Screen.COMPARISON
+                        }
+                    )
+
+                    Screen.STORES -> StoreDirectoryScreen(
+                        pad = pad,
+                        stores = stores,
+                        fg = fg,
+                        card = card,
+                        dao = dao,
+                        onBack = {
+                            screen = Screen.SETTINGS
+                        }
+                    )
+
+                    Screen.BUDGET -> BudgetScreen(
+                        purchases = purchases,
+                        budgets = budgets,
+                        dao = dao,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(pad)
+                    )
                 }
-
-                Screen.REVIEW -> ReviewScreen(
-                    pad = pad,
-                    ar = isAr,
-                    fg = fg,
-                    card = card,
-                    stores = stores,
-
-                    onAddStore = { name ->
-                        val cleanName = name.trim()
-
-                        if (cleanName.isNotBlank()) {
-                            scope.launch {
-                                dao.insertStoreIfAbsent(
-                                    StoreEntity(name = cleanName)
-                                )
-                                store = cleanName
-                            }
-                        }
-                    },
-
-                    store = store,
-                    onStore = { store = it },
-                    ticketNumber = ticketNumber,
-                    onTicketNumber = { ticketNumber = it },
-                    drafts = drafts,
-                    onDrafts = { drafts = it },
-                    raw = ocrText,
-
-                    onSave = {
-                        val rid = ReceiptParser.receiptId()
-                        val number = ticketNumber.trim()
-                        val storeName = store.trim().ifBlank {
-                            "Magasin"
-                        }
-
-                        val rows = drafts.mapNotNull { d ->
-
-                            val q = d.quantity
-                                .replace(',', '.')
-                                .toDoubleOrNull()
-
-                            val price = d.unitPrice
-                                .replace(',', '.')
-                                .toDoubleOrNull()
-
-                            val amount = d.total
-                                .replace(',', '.')
-                                .toDoubleOrNull()
-
-                            if (
-                                d.product.isBlank() ||
-                                q == null ||
-                                price == null ||
-                                amount == null
-                            ) {
-                                null
-                            } else {
-                                PurchaseEntity(
-                                    receiptDate = ReceiptParser.today(),
-                                    store = storeName,
-                                    product = d.product,
-                                    quantity = q,
-                                    unitPrice = price,
-                                    total = amount,
-                                    currency = currencyCode,
-                                    ticketNumber = number,
-                                    receiptId = rid
-                                )
-                            }
-                        }
-
-                        scope.launch {
-                            if (rows.isNotEmpty()) {
-
-                                dao.insertStoreIfAbsent(
-                                    StoreEntity(name = storeName)
-                                )
-
-                                dao.insertAll(rows)
-
-                                ticketNumber = ""
-                                store = ""
-
-                                notice = if (isAr)
-                                    "تم حفظ المشتريات"
-                                else
-                                    "Achats enregistrés"
-
-                                screen = Screen.HOME
-
-                            } else {
-                                notice = if (isAr)
-                                    "تحقق من المنتجات والأسعار"
-                                else
-                                    "Vérifie les produits et les prix."
-                            }
-                        }
-                    },
-
-                    onRescan = {
-                        screen = Screen.SCAN
-                    }
-                )
-
-                Screen.HISTORY -> HistoryV2(
-                    pad = pad,
-                    rows = purchases,
-                    money = money,
-                    ar = isAr,
-                    fg = fg,
-                    card = card,
-                    dao = dao,
-                    onExport = {
-                        createXlsx.launch("MonPanier-achats.xlsx")
-                    }
-                )
-
-                Screen.STATS -> StatsV2(
-                    pad,
-                    purchases,
-                    money,
-                    isAr,
-                    fg,
-                    card
-                )
-
-                Screen.PRICES -> PriceHistoryScreen(
-                    pad,
-                    purchases,
-                    money,
-                    isAr,
-                    fg,
-                    card
-                )
-
-                Screen.COMPARISON -> PriceComparisonScreen(
-                    purchases = purchases,
-                    onBack = {
-                        screen = Screen.HOME
-                    }
-                )
-
-                Screen.BASKET -> SmartBasketScreen(
-                    pad,
-                    purchases,
-                    money,
-                    isAr,
-                    fg,
-                    card
-                )
-
-                Screen.SETTINGS -> SettingsV2(
-                    pad = pad,
-                    dark = dark,
-                    onDark = {
-                        dark = it
-                        prefs.edit()
-                            .putBoolean("dark", it)
-                            .apply()
-                    },
-                    money = money,
-                    onMoney = {
-                        money = it
-                        prefs.edit()
-                            .putString("money", it.name)
-                            .apply()
-                    },
-                    lang = lang,
-                    onLang = {
-                        lang = it
-                        prefs.edit()
-                            .putString("lang", it.name)
-                            .apply()
-                    },
-                    ar = isAr,
-                    fg = fg,
-                    card = card,
-                    onStores = {
-                        screen = Screen.STORES
-                    },
-                    onBudget = {
-                        screen = Screen.BUDGET
-                    },
-                    onComparison = {
-                        screen = Screen.COMPARISON
-                    }
-                )
-
-                Screen.STORES -> StoreDirectoryScreen(
-                    pad = pad,
-                    stores = stores,
-                    fg = fg,
-                    card = card,
-                    dao = dao,
-                    onBack = {
-                        screen = Screen.SETTINGS
-                    }
-                )
-
-                Screen.BUDGET -> BudgetScreen(
-                    purchases = purchases,
-                    budgets = budgets,
-                    dao = dao,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(pad)
-                )
             }
         }
     }
@@ -703,55 +689,208 @@ private fun TopAppBarV2(
     ar: Boolean,
     fg: Color,
     green: Color,
-    onSettings: () -> Unit
+    onMenu: () -> Unit
 ) {
     CenterAlignedTopAppBar(
         title = {
             Text(
                 "Mon Panier",
+                fontSize = 19.sp,
                 fontWeight = FontWeight.Bold,
                 color = fg
             )
         },
+
         navigationIcon = {
-            Icon(
-                Icons.Default.ShoppingCart,
-                null,
-                tint = green,
-                modifier = Modifier.padding(start = 14.dp)
-            )
-        },
-        actions = {
-            IconButton(onClick = onSettings) {
+            IconButton(onClick = onMenu) {
                 Icon(
-                    Icons.Default.Settings,
-                    null,
-                    tint = fg
+                    Icons.Default.Menu,
+                    contentDescription = "Ouvrir le menu",
+                    tint = fg,
+                    modifier = Modifier.size(25.dp)
                 )
             }
+        },
+
+        actions = {
+            Icon(
+                Icons.Default.ShoppingCart,
+                contentDescription = null,
+                tint = green,
+                modifier = Modifier
+                    .padding(end = 14.dp)
+                    .size(22.dp)
+            )
         }
     )
 }
 
-/* NAVIGATION */
+/* MENU LATÉRAL */
 
 @Composable
-private fun RowScope.NavItem(
-    selected: Boolean,
-    click: () -> Unit,
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    label: String
+private fun AppDrawerV2(
+    current: Screen,
+    ar: Boolean,
+    fg: Color,
+    green: Color,
+    onNavigate: (Screen) -> Unit
 ) {
-    NavigationBarItem(
-        selected = selected,
-        onClick = click,
-        icon = {
-            Icon(icon, null)
-        },
-        label = {
-            Text(label)
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(horizontal = 10.dp)
+    ) {
+
+        Spacer(Modifier.height(24.dp))
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                Icons.Default.ShoppingCart,
+                contentDescription = null,
+                tint = green,
+                modifier = Modifier.size(30.dp)
+            )
+
+            Spacer(Modifier.width(10.dp))
+
+            Column {
+                Text(
+                    "Mon Panier",
+                    fontSize = 19.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = fg
+                )
+
+                Text(
+                    if (ar) "إدارة مشترياتك"
+                    else "Gestion des achats",
+                    fontSize = 11.sp,
+                    color = fg.copy(alpha = 0.65f)
+                )
+            }
         }
-    )
+
+        Spacer(Modifier.height(18.dp))
+
+        HorizontalDivider()
+
+        Spacer(Modifier.height(12.dp))
+
+        val menuItems = listOf(
+            Triple(
+                Screen.HOME,
+                Icons.Default.Home,
+                if (ar) "الرئيسية" else "Accueil"
+            ),
+            Triple(
+                Screen.SCAN,
+                Icons.Default.CameraAlt,
+                if (ar) "مسح إيصال" else "Scanner"
+            ),
+            Triple(
+                Screen.BASKET,
+                Icons.Default.ShoppingCart,
+                if (ar) "السلة" else "Panier"
+            ),
+            Triple(
+                Screen.HISTORY,
+                Icons.Default.ReceiptLong,
+                if (ar) "السجل" else "Historique"
+            ),
+            Triple(
+                Screen.STATS,
+                Icons.Default.BarChart,
+                if (ar) "الإحصائيات" else "Statistiques"
+            ),
+            Triple(
+                Screen.PRICES,
+                Icons.Default.ShowChart,
+                if (ar) "الأسعار" else "Prix"
+            ),
+            Triple(
+                Screen.COMPARISON,
+                Icons.Default.CompareArrows,
+                if (ar) "مقارنة الأسعار" else "Comparer"
+            ),
+            Triple(
+                Screen.STORES,
+                Icons.Default.Store,
+                if (ar) "المتاجر" else "Magasins"
+            ),
+            Triple(
+                Screen.BUDGET,
+                Icons.Default.AccountBalanceWallet,
+                if (ar) "الميزانية" else "Budget"
+            ),
+            Triple(
+                Screen.SETTINGS,
+                Icons.Default.Settings,
+                if (ar) "الإعدادات" else "Paramètres"
+            )
+        )
+
+        menuItems.forEach { item ->
+
+            NavigationDrawerItem(
+                icon = {
+                    Icon(
+                        item.second,
+                        contentDescription = null,
+                        modifier = Modifier.size(20.dp)
+                    )
+                },
+
+                label = {
+                    Text(
+                        item.third,
+                        fontSize = 13.sp,
+                        maxLines = 1,
+                        fontWeight = if (current == item.first)
+                            FontWeight.Bold
+                        else
+                            FontWeight.Normal
+                    )
+                },
+
+                selected = current == item.first,
+
+                onClick = {
+                    onNavigate(item.first)
+                },
+
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 2.dp)
+                    .heightIn(min = 44.dp),
+
+                colors = NavigationDrawerItemDefaults.colors(
+                    selectedContainerColor = green.copy(alpha = 0.15f),
+                    selectedTextColor = fg,
+                    selectedIconColor = green,
+                    unselectedTextColor = fg,
+                    unselectedIconColor = fg.copy(alpha = 0.75f)
+                )
+            )
+        }
+
+        Spacer(Modifier.weight(1f))
+
+        HorizontalDivider()
+
+        Text(
+            "Mon Panier • Version 2.0.0",
+            fontSize = 11.sp,
+            color = fg.copy(alpha = 0.55f),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(14.dp)
+        )
+    }
 }
 
 /* ACCUEIL */
@@ -783,8 +922,8 @@ private fun HomeV2(
         Modifier
             .fillMaxSize()
             .padding(pad)
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
+            .padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
 
         item {
@@ -793,7 +932,7 @@ private fun HomeV2(
                     "مرحباً بك في Mon Panier"
                 else
                     "Bienvenue dans Mon Panier",
-                fontSize = 24.sp,
+                fontSize = 20.sp,
                 fontWeight = FontWeight.Bold,
                 color = fg
             )
@@ -803,6 +942,7 @@ private fun HomeV2(
                     "تابع مشترياتك ونفقاتك"
                 else
                     "Scanne tes tickets et suis tes dépenses.",
+                fontSize = 13.sp,
                 color = fg.copy(alpha = .7f)
             )
         }
@@ -812,24 +952,25 @@ private fun HomeV2(
                 colors = CardDefaults.cardColors(
                     containerColor = Color(0xFF078A4B)
                 ),
-                shape = RoundedCornerShape(22.dp)
+                shape = RoundedCornerShape(20.dp)
             ) {
                 Column(
                     Modifier
                         .fillMaxWidth()
-                        .padding(20.dp)
+                        .padding(16.dp)
                 ) {
                     Text(
                         if (ar)
                             "إجمالي المشتريات"
                         else
                             "Total des achats",
+                        fontSize = 13.sp,
                         color = Color.White
                     )
 
                     Text(
                         "${"%.2f".format(Locale.FRANCE, sum)} $symbol",
-                        fontSize = 30.sp,
+                        fontSize = 26.sp,
                         fontWeight = FontWeight.Bold,
                         color = Color.White
                     )
@@ -839,6 +980,7 @@ private fun HomeV2(
                             if (ar) "منتج مسجل"
                             else "lignes enregistrées"
                         }",
+                        fontSize = 12.sp,
                         color = Color.White
                     )
                 }
@@ -850,14 +992,15 @@ private fun HomeV2(
                 onClick = onScan,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(56.dp)
+                    .height(52.dp)
             ) {
                 Icon(Icons.Default.PhotoCamera, null)
                 Spacer(Modifier.width(8.dp))
 
                 Text(
                     if (ar) "مسح إيصال"
-                    else "Scanner un ticket"
+                    else "Scanner un ticket",
+                    fontSize = 14.sp
                 )
             }
         }
@@ -889,7 +1032,7 @@ private fun HomeV2(
                 if (ar) "آخر المشتريات"
                 else "Derniers achats",
                 fontWeight = FontWeight.Bold,
-                fontSize = 19.sp,
+                fontSize = 17.sp,
                 color = fg
             )
         }
@@ -910,6 +1053,7 @@ private fun HomeV2(
                         "لا توجد مشتريات بعد. ابدأ بمسح أول إيصال."
                     else
                         "Aucun achat pour le moment. Scanne ton premier ticket.",
+                    fontSize = 13.sp,
                     color = fg.copy(alpha = .65f)
                 )
             }
@@ -919,7 +1063,8 @@ private fun HomeV2(
             TextButton(onClick = onHistory) {
                 Text(
                     if (ar) "عرض السجل الكامل"
-                    else "Voir tout l'historique"
+                    else "Voir tout l'historique",
+                    fontSize = 13.sp
                 )
             }
         }
@@ -943,17 +1088,18 @@ private fun SmallMetric(
         )
     ) {
         Column(
-            Modifier.padding(14.dp)
+            Modifier.padding(12.dp)
         ) {
             Text(
                 value,
-                fontSize = 24.sp,
+                fontSize = 22.sp,
                 fontWeight = FontWeight.Bold,
                 color = fg
             )
 
             Text(
                 label,
+                fontSize = 12.sp,
                 color = fg.copy(alpha = .7f)
             )
         }
@@ -1005,14 +1151,14 @@ private fun ScannerScreen(
         Modifier
             .fillMaxSize()
             .padding(pad)
-            .padding(14.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
+            .padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
 
         Text(
             if (ar) "امسح إيصال الشراء"
             else "Scanner un ticket",
-            fontSize = 22.sp,
+            fontSize = 20.sp,
             fontWeight = FontWeight.Bold,
             color = fg
         )
@@ -1021,7 +1167,7 @@ private fun ScannerScreen(
             onClick = onGallery,
             modifier = Modifier
                 .fillMaxWidth()
-                .height(54.dp)
+                .height(50.dp)
         ) {
             Icon(Icons.Default.Image, null)
             Spacer(Modifier.width(8.dp))
@@ -1030,7 +1176,8 @@ private fun ScannerScreen(
                 if (ar)
                     "اختيار إيصال من الهاتف"
                 else
-                    "Importer un ticket depuis le téléphone"
+                    "Importer depuis le téléphone",
+                fontSize = 13.sp
             )
         }
 
@@ -1039,6 +1186,7 @@ private fun ScannerScreen(
                 "يمكنك اختيار صورة محفوظة مسبقاً في هاتفك."
             else
                 "Sélectionne une image de ticket déjà enregistrée dans ton téléphone.",
+            fontSize = 12.sp,
             color = fg.copy(alpha = .7f)
         )
 
@@ -1051,6 +1199,7 @@ private fun ScannerScreen(
                     "يلزم السماح باستعمال الكاميرا"
                 else
                     "L'accès à la caméra est nécessaire pour scanner un nouveau ticket.",
+                fontSize = 13.sp,
                 color = fg
             )
 
@@ -1175,7 +1324,7 @@ private fun ScannerScreen(
 
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(54.dp)
+                    .height(52.dp)
 
             ) {
                 Icon(Icons.Default.CameraAlt, null)
@@ -1183,7 +1332,8 @@ private fun ScannerScreen(
 
                 Text(
                     if (ar) "التقاط الصورة"
-                    else "Prendre la photo"
+                    else "Prendre la photo",
+                    fontSize = 14.sp
                 )
             }
 
@@ -1192,13 +1342,15 @@ private fun ScannerScreen(
                     "ضع الإيصال داخل الإطار مع إضاءة جيدة."
                 else
                     "Place le ticket bien à plat, dans un endroit éclairé.",
+                fontSize = 12.sp,
                 color = fg.copy(alpha = .7f)
             )
 
             if (message.isNotBlank()) {
                 Text(
                     message,
-                    color = green
+                    color = green,
+                    fontSize = 12.sp
                 )
             }
         }
@@ -1358,13 +1510,13 @@ private fun CropScreen(
         Modifier
             .fillMaxSize()
             .padding(pad)
-            .padding(14.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp)
+            .padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         Text(
             if (ar) "اضبط إطار الإيصال"
             else "Cadrer le ticket",
-            fontSize = 22.sp,
+            fontSize = 20.sp,
             fontWeight = FontWeight.Bold,
             color = fg
         )
@@ -1372,6 +1524,7 @@ private fun CropScreen(
         Text(
             if (ar) "حرّك الزوايا لتحيط بجدول المنتجات فقط."
             else "Glisse les coins pour garder le tableau des produits.",
+            fontSize = 12.sp,
             color = fg.copy(alpha = .7f)
         )
 
@@ -1517,7 +1670,7 @@ private fun CropScreen(
         }
 
         if (message.isNotBlank()) {
-            Text(message, color = Color(0xFFD32F2F))
+            Text(message, color = Color(0xFFD32F2F), fontSize = 12.sp)
         }
 
         Row(
@@ -1529,7 +1682,7 @@ private fun CropScreen(
                 enabled = !busy,
                 modifier = Modifier.weight(1f)
             ) {
-                Text(if (ar) "إعادة التصوير" else "Reprendre")
+                Text(if (ar) "إعادة التصوير" else "Reprendre", fontSize = 12.sp)
             }
 
             Button(
@@ -1567,7 +1720,8 @@ private fun CropScreen(
                     if (busy)
                         (if (ar) "جارٍ القراءة…" else "Lecture…")
                     else
-                        (if (ar) "قراءة الإيصال" else "Lire le ticket")
+                        (if (ar) "قراءة الإيصال" else "Lire le ticket"),
+                    fontSize = 12.sp
                 )
             }
         }
@@ -1603,13 +1757,13 @@ private fun ReviewScreen(
         Modifier
             .fillMaxSize()
             .padding(pad)
-            .padding(14.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp)
+            .padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         Text(
             if (ar) "تحقق من المنتجات"
             else "Vérifier les articles",
-            fontSize = 22.sp,
+            fontSize = 20.sp,
             fontWeight = FontWeight.Bold,
             color = fg
         )
@@ -1683,7 +1837,8 @@ private fun ReviewScreen(
 
             Text(
                 if (ar) "إضافة متجر جديد"
-                else "Ajouter un nouveau magasin"
+                else "Ajouter un magasin",
+                fontSize = 13.sp
             )
         }
 
@@ -1703,6 +1858,7 @@ private fun ReviewScreen(
         Text(
             if (ar) "صحح المعلومات قبل الحفظ"
             else "Corrige les lignes détectées avant l'enregistrement.",
+            fontSize = 12.sp,
             color = fg.copy(alpha = .7f)
         )
 
@@ -1718,7 +1874,7 @@ private fun ReviewScreen(
                         containerColor = card
                     )
                 ) {
-                    Column(Modifier.padding(10.dp)) {
+                    Column(Modifier.padding(8.dp)) {
 
                         Row(
                             verticalAlignment = Alignment.CenterVertically
@@ -1757,7 +1913,7 @@ private fun ReviewScreen(
                         }
 
                         Row(
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            horizontalArrangement = Arrangement.spacedBy(5.dp)
                         ) {
                             OutlinedTextField(
                                 value = d.quantity,
@@ -1819,14 +1975,14 @@ private fun ReviewScreen(
                 onClick = onRescan,
                 modifier = Modifier.weight(1f)
             ) {
-                Text(if (ar) "إعادة المسح" else "Recommencer")
+                Text(if (ar) "إعادة المسح" else "Recommencer", fontSize = 12.sp)
             }
 
             Button(
                 onClick = onSave,
                 modifier = Modifier.weight(1f)
             ) {
-                Text(if (ar) "حفظ" else "Enregistrer")
+                Text(if (ar) "حفظ" else "Enregistrer", fontSize = 12.sp)
             }
         }
 
@@ -1834,8 +1990,8 @@ private fun ReviewScreen(
             if (ar)
                 "ملاحظة: تحقق دائماً من نتائج التعرف الضوئي."
             else
-                "Important : l'OCR peut se tromper. Vérifie chaque ligne avant de sauvegarder.",
-            fontSize = 11.sp,
+                "Important : vérifie chaque ligne avant de sauvegarder.",
+            fontSize = 10.sp,
             color = fg.copy(alpha = .6f)
         )
     }
@@ -1920,26 +2076,29 @@ private fun HistoryV2(
         Modifier
             .fillMaxSize()
             .padding(pad)
-            .padding(14.dp)
+            .padding(12.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
                 if (ar) "سجل المشتريات"
                 else "Historique des achats",
                 Modifier.weight(1f),
-                fontSize = 21.sp,
+                fontSize = 18.sp,
                 fontWeight = FontWeight.Bold,
                 color = fg
             )
 
-            Button(onClick = onExport) {
+            Button(
+                onClick = onExport,
+                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
+            ) {
                 Icon(Icons.Default.FileDownload, null)
                 Spacer(Modifier.width(4.dp))
-                Text("Excel")
+                Text("Excel", fontSize = 12.sp)
             }
         }
 
-        Spacer(Modifier.height(10.dp))
+        Spacer(Modifier.height(8.dp))
 
         OutlinedTextField(
             value = search,
@@ -1951,7 +2110,8 @@ private fun HistoryV2(
                     if (ar)
                         "البحث برقم الإيصال أو المنتج أو المتجر"
                     else
-                        "Rechercher un ticket, produit ou magasin"
+                        "Rechercher un ticket, produit ou magasin",
+                    fontSize = 12.sp
                 )
             },
             leadingIcon = {
@@ -1966,13 +2126,14 @@ private fun HistoryV2(
             }
         )
 
-        Spacer(Modifier.height(10.dp))
+        Spacer(Modifier.height(8.dp))
 
         if (message.isNotBlank()) {
             Text(
                 message,
+                fontSize = 12.sp,
                 color = Color(0xFF078A4B),
-                modifier = Modifier.padding(bottom = 8.dp)
+                modifier = Modifier.padding(bottom = 6.dp)
             )
         }
 
@@ -2038,6 +2199,7 @@ private fun HistoryV2(
             Text(
                 if (ar) "لا توجد نتائج"
                 else "Aucun achat trouvé.",
+                fontSize = 12.sp,
                 color = fg.copy(alpha = .7f)
             )
         }
@@ -2087,7 +2249,7 @@ private fun PurchaseManagementRow(
         Row(
             Modifier
                 .fillMaxWidth()
-                .padding(12.dp),
+                .padding(10.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Icon(
@@ -2096,37 +2258,39 @@ private fun PurchaseManagementRow(
                 tint = Color(0xFF078A4B)
             )
 
-            Spacer(Modifier.width(10.dp))
+            Spacer(Modifier.width(8.dp))
 
             Column(Modifier.weight(1f)) {
                 Text(
                     purchase.product,
+                    fontSize = 14.sp,
                     fontWeight = FontWeight.SemiBold,
                     color = fg
                 )
 
                 Text(
                     "${purchase.store} • ${purchase.receiptDate}",
-                    fontSize = 11.sp,
+                    fontSize = 10.sp,
                     color = fg.copy(alpha = .7f)
                 )
 
                 Text(
                     "Qté : ${purchase.quantity}",
-                    fontSize = 11.sp,
+                    fontSize = 10.sp,
                     color = fg.copy(alpha = .7f)
                 )
 
                 if (purchase.ticketNumber.isNotBlank()) {
                     Text(
                         "Ticket N° : ${purchase.ticketNumber}",
-                        fontSize = 12.sp,
+                        fontSize = 11.sp,
                         color = Color(0xFF078A4B)
                     )
                 }
 
                 Text(
                     "${"%.2f".format(Locale.FRANCE, purchase.total)} ${purchase.currency}",
+                    fontSize = 13.sp,
                     fontWeight = FontWeight.Bold,
                     color = fg
                 )
@@ -2385,7 +2549,7 @@ private fun PurchaseRowV2(
         Row(
             Modifier
                 .fillMaxWidth()
-                .padding(12.dp),
+                .padding(10.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Icon(
@@ -2394,25 +2558,26 @@ private fun PurchaseRowV2(
                 tint = Color(0xFF078A4B)
             )
 
-            Spacer(Modifier.width(10.dp))
+            Spacer(Modifier.width(8.dp))
 
             Column(Modifier.weight(1f)) {
                 Text(
                     p.product,
+                    fontSize = 14.sp,
                     fontWeight = FontWeight.SemiBold,
                     color = fg
                 )
 
                 Text(
                     "${p.store} • ${p.receiptDate} • Qté ${p.quantity}",
-                    fontSize = 11.sp,
+                    fontSize = 10.sp,
                     color = fg.copy(alpha = .65f)
                 )
 
                 if (p.ticketNumber.isNotBlank()) {
                     Text(
                         "Ticket N° : ${p.ticketNumber}",
-                        fontSize = 12.sp,
+                        fontSize = 11.sp,
                         fontWeight = FontWeight.Medium,
                         color = Color(0xFF078A4B)
                     )
@@ -2421,6 +2586,7 @@ private fun PurchaseRowV2(
 
             Text(
                 "${"%.2f".format(Locale.FRANCE, p.total)} ${p.currency}",
+                fontSize = 12.sp,
                 fontWeight = FontWeight.Bold,
                 color = fg
             )
@@ -2496,19 +2662,19 @@ private fun StatsV2(
         Modifier
             .fillMaxSize()
             .padding(pad)
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
+            .padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         Text(
             if (ar) "إحصائيات المصاريف"
             else "Statistiques des dépenses",
-            fontSize = 23.sp,
+            fontSize = 20.sp,
             fontWeight = FontWeight.Bold,
             color = fg
         )
 
         Row(
-            horizontalArrangement = Arrangement.spacedBy(6.dp)
+            horizontalArrangement = Arrangement.spacedBy(5.dp)
         ) {
             FilterChip(
                 selected = period == "week",
@@ -2516,7 +2682,7 @@ private fun StatsV2(
                     period = "week"
                 },
                 label = {
-                    Text(if (ar) "هذا الأسبوع" else "Cette semaine")
+                    Text(if (ar) "هذا الأسبوع" else "Cette semaine", fontSize = 11.sp)
                 }
             )
 
@@ -2526,7 +2692,7 @@ private fun StatsV2(
                     period = "month"
                 },
                 label = {
-                    Text(if (ar) "هذا الشهر" else "Ce mois")
+                    Text(if (ar) "هذا الشهر" else "Ce mois", fontSize = 11.sp)
                 }
             )
 
@@ -2536,7 +2702,7 @@ private fun StatsV2(
                     period = "all"
                 },
                 label = {
-                    Text(if (ar) "الكل" else "Tout")
+                    Text(if (ar) "الكل" else "Tout", fontSize = 11.sp)
                 }
             )
         }
@@ -2546,16 +2712,17 @@ private fun StatsV2(
                 containerColor = card
             )
         ) {
-            Column(Modifier.padding(16.dp)) {
+            Column(Modifier.padding(14.dp)) {
                 Text(
                     if (ar) "إجمالي المصاريف"
                     else "Montant des achats",
+                    fontSize = 12.sp,
                     color = fg.copy(alpha = .7f)
                 )
 
                 Text(
                     "${"%.2f".format(Locale.FRANCE, total)} ${money.name}",
-                    fontSize = 28.sp,
+                    fontSize = 25.sp,
                     fontWeight = FontWeight.Bold,
                     color = Color(0xFF078A4B)
                 )
@@ -2564,6 +2731,7 @@ private fun StatsV2(
                     "${periodRows.sumOf { it.quantity }} " +
                         "${if (ar) "منتج" else "articles"} • " +
                         "${periodRows.map { it.receiptId }.distinct().size} tickets",
+                    fontSize = 11.sp,
                     color = fg.copy(alpha = .75f)
                 )
             }
@@ -2573,6 +2741,7 @@ private fun StatsV2(
             if (ar) "المصاريف حسب المنتج"
             else "Dépenses par produit",
             fontWeight = FontWeight.Bold,
+            fontSize = 15.sp,
             color = fg
         )
 
@@ -2590,11 +2759,13 @@ private fun StatsV2(
                         Text(
                             name,
                             Modifier.weight(1f),
+                            fontSize = 12.sp,
                             color = fg
                         )
 
                         Text(
                             "${"%.2f".format(Locale.FRANCE, amount)} ${money.name}",
+                            fontSize = 12.sp,
                             color = fg
                         )
                     }
@@ -2617,6 +2788,7 @@ private fun StatsV2(
                     Text(
                         if (ar) "لا توجد مشتريات لهذه الفترة"
                         else "Aucun achat pour cette période.",
+                        fontSize = 12.sp,
                         color = fg.copy(alpha = .7f)
                     )
                 }
@@ -2647,12 +2819,13 @@ private fun SettingsV2(
         Modifier
             .fillMaxSize()
             .padding(pad)
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         Text(
             if (ar) "الإعدادات" else "Paramètres",
-            fontSize = 23.sp,
+            fontSize = 20.sp,
             fontWeight = FontWeight.Bold,
             color = fg
         )
@@ -2664,15 +2837,16 @@ private fun SettingsV2(
                 containerColor = card
             )
         ) {
-            Column(Modifier.padding(14.dp)) {
+            Column(Modifier.padding(12.dp)) {
                 Text(
                     if (ar) "إدارة المتاجر"
                     else "Gestion des magasins",
+                    fontSize = 15.sp,
                     fontWeight = FontWeight.Bold,
                     color = fg
                 )
 
-                Spacer(Modifier.height(8.dp))
+                Spacer(Modifier.height(6.dp))
 
                 Button(
                     onClick = onStores,
@@ -2683,7 +2857,8 @@ private fun SettingsV2(
 
                     Text(
                         if (ar) "دليل المتاجر"
-                        else "Répertoire des magasins"
+                        else "Répertoire des magasins",
+                        fontSize = 13.sp
                     )
                 }
             }
@@ -2696,25 +2871,27 @@ private fun SettingsV2(
                 containerColor = card
             )
         ) {
-            Column(Modifier.padding(14.dp)) {
+            Column(Modifier.padding(12.dp)) {
                 Text(
                     if (ar) "الميزانية الشهرية"
                     else "Budget mensuel",
+                    fontSize = 15.sp,
                     fontWeight = FontWeight.Bold,
                     color = fg
                 )
 
-                Spacer(Modifier.height(8.dp))
+                Spacer(Modifier.height(6.dp))
 
                 Text(
                     if (ar)
                         "حدد ميزانيتك وتابع مصاريفك الشهرية"
                     else
                         "Définis ton budget et suis tes dépenses chaque mois.",
+                    fontSize = 12.sp,
                     color = fg.copy(alpha = 0.7f)
                 )
 
-                Spacer(Modifier.height(8.dp))
+                Spacer(Modifier.height(6.dp))
 
                 Button(
                     onClick = onBudget,
@@ -2729,7 +2906,8 @@ private fun SettingsV2(
 
                     Text(
                         if (ar) "إدارة الميزانية"
-                        else "Gérer mon budget"
+                        else "Gérer mon budget",
+                        fontSize = 13.sp
                     )
                 }
             }
@@ -2742,25 +2920,27 @@ private fun SettingsV2(
                 containerColor = card
             )
         ) {
-            Column(Modifier.padding(14.dp)) {
+            Column(Modifier.padding(12.dp)) {
                 Text(
                     if (ar) "مقارنة الأسعار"
                     else "Comparateur de prix",
+                    fontSize = 15.sp,
                     fontWeight = FontWeight.Bold,
                     color = fg
                 )
 
-                Spacer(Modifier.height(8.dp))
+                Spacer(Modifier.height(6.dp))
 
                 Text(
                     if (ar)
                         "قارن أسعار المنتجات بين المتاجر المختلفة"
                     else
                         "Compare les prix d'un même produit entre les différents magasins.",
+                    fontSize = 12.sp,
                     color = fg.copy(alpha = 0.7f)
                 )
 
-                Spacer(Modifier.height(8.dp))
+                Spacer(Modifier.height(6.dp))
 
                 Button(
                     onClick = onComparison,
@@ -2775,7 +2955,8 @@ private fun SettingsV2(
 
                     Text(
                         if (ar) "مقارنة الأسعار"
-                        else "Ouvrir le comparateur"
+                        else "Ouvrir le comparateur",
+                        fontSize = 13.sp
                     )
                 }
             }
@@ -2788,9 +2969,10 @@ private fun SettingsV2(
                 containerColor = card
             )
         ) {
-            Column(Modifier.padding(14.dp)) {
+            Column(Modifier.padding(12.dp)) {
                 Text(
                     if (ar) "المظهر" else "Apparence",
+                    fontSize = 15.sp,
                     fontWeight = FontWeight.Bold,
                     color = fg
                 )
@@ -2801,6 +2983,7 @@ private fun SettingsV2(
                     Text(
                         if (dark) "Mode Dark" else "Mode coloré",
                         Modifier.weight(1f),
+                        fontSize = 13.sp,
                         color = fg
                     )
 
@@ -2819,9 +3002,10 @@ private fun SettingsV2(
                 containerColor = card
             )
         ) {
-            Column(Modifier.padding(14.dp)) {
+            Column(Modifier.padding(12.dp)) {
                 Text(
                     if (ar) "العملة" else "Monnaie",
+                    fontSize = 15.sp,
                     fontWeight = FontWeight.Bold,
                     color = fg
                 )
@@ -2839,6 +3023,7 @@ private fun SettingsV2(
 
                         Text(
                             it.label,
+                            fontSize = 13.sp,
                             color = fg
                         )
                     }
@@ -2853,9 +3038,10 @@ private fun SettingsV2(
                 containerColor = card
             )
         ) {
-            Column(Modifier.padding(14.dp)) {
+            Column(Modifier.padding(12.dp)) {
                 Text(
                     if (ar) "اللغة" else "Langue",
+                    fontSize = 15.sp,
                     fontWeight = FontWeight.Bold,
                     color = fg
                 )
@@ -2872,6 +3058,7 @@ private fun SettingsV2(
 
                     Text(
                         "Français",
+                        fontSize = 13.sp,
                         color = fg
                     )
                 }
@@ -2888,6 +3075,7 @@ private fun SettingsV2(
 
                     Text(
                         "العربية",
+                        fontSize = 13.sp,
                         color = fg
                     )
                 }
@@ -2898,7 +3086,10 @@ private fun SettingsV2(
             if (ar) "الإصدار 2.0.0"
             else "Mon Panier • Version 2.0.0",
             color = fg.copy(alpha = .6f),
-            fontSize = 12.sp
+            fontSize = 11.sp,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 8.dp)
         )
     }
 }
