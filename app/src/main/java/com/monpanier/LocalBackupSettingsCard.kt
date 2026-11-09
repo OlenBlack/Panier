@@ -97,7 +97,7 @@ fun LocalBackupSettingsCard(
             val date = DateFormat.getDateTimeInstance(
                 DateFormat.MEDIUM,
                 DateFormat.SHORT
-            ).format(Date(lastBackup))
+            ).format(Date(lastBackup.toString().toLongOrNull() ?: 0L))
 
             if (ar) {
                 "آخر نسخة: $date"
