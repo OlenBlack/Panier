@@ -1,7 +1,6 @@
 
 package com.monpanier.app
 
-import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -15,7 +14,6 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 import java.text.DateFormat
 import java.util.Date
-import androidx.compose.runtime.collectAsState
 
 @Composable
 fun LocalBackupSettingsCard(
@@ -29,10 +27,10 @@ fun LocalBackupSettingsCard(
     var message by remember {
         mutableStateOf("")
     }
-    
-val lastBackup by LocalBackupManager.lastBackupUpdates.collectAsState(
-    initial = LocalBackupManager.getLastBackup(context)
-)
+
+    val lastBackup by LocalBackupManager.lastBackupUpdates.collectAsState(
+        initial = LocalBackupManager.getLastBackup(context)
+    )
 
     val folderPicker = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocumentTree()
@@ -48,9 +46,6 @@ val lastBackup by LocalBackupManager.lastBackupUpdates.collectAsState(
                 scope.launch {
                     try {
                         LocalBackupManager.backup(context)
-
-                        lastBackup =
-                            LocalBackupManager.getLastBackup(context)
 
                         message = if (ar) {
                             "تم حفظ النسخة الاحتياطية بنجاح"
@@ -93,16 +88,22 @@ val lastBackup by LocalBackupManager.lastBackupUpdates.collectAsState(
 
     val lastBackupText = remember(lastBackup, ar) {
         if (lastBackup == 0L) {
-            if (ar) "لم يتم إنشاء نسخة بعد"
-            else "Aucune sauvegarde effectuée."
+            if (ar) {
+                "لم يتم إنشاء نسخة بعد"
+            } else {
+                "Aucune sauvegarde effectuée."
+            }
         } else {
             val date = DateFormat.getDateTimeInstance(
                 DateFormat.MEDIUM,
                 DateFormat.SHORT
             ).format(Date(lastBackup))
 
-            if (ar) "آخر نسخة: $date"
-            else "Dernière sauvegarde : $date"
+            if (ar) {
+                "آخر نسخة: $date"
+            } else {
+                "Dernière sauvegarde : $date"
+            }
         }
     }
 
@@ -146,9 +147,6 @@ val lastBackup by LocalBackupManager.lastBackupUpdates.collectAsState(
                         scope.launch {
                             try {
                                 LocalBackupManager.backup(context)
-
-                                lastBackup =
-                                    LocalBackupManager.getLastBackup(context)
 
                                 message = if (ar) {
                                     "تم حفظ النسخة الاحتياطية بنجاح"
