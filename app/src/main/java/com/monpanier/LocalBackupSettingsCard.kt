@@ -21,16 +21,17 @@ fun LocalBackupSettingsCard(
     card: Color,
     ar: Boolean
 ) {
-    val context = LocalContext.current
+    val context = LocalContext.current.applicationContext
     val scope = rememberCoroutineScope()
 
     var message by remember {
         mutableStateOf("")
     }
 
-    val lastBackup by LocalBackupManager.lastBackupUpdates.collectAsState(
-        initial = LocalBackupManager.getLastBackup(context)
-    )
+    val lastBackupUpdate by LocalBackupManager.lastBackupUpdates.collectAsState()
+
+    val lastBackup = lastBackupUpdate
+        ?: LocalBackupManager.getLastBackup(context)
 
     val folderPicker = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocumentTree()
@@ -38,10 +39,7 @@ fun LocalBackupSettingsCard(
 
         if (uri != null) {
             try {
-                LocalBackupManager.saveFolderPermission(
-                    context,
-                    uri
-                )
+                LocalBackupManager.saveFolderPermission(context, uri)
 
                 scope.launch {
                     try {
@@ -87,6 +85,7 @@ fun LocalBackupSettingsCard(
     }
 
     val lastBackupText = remember(lastBackup, ar) {
+
         if (lastBackup == 0L) {
             if (ar) {
                 "لم يتم إنشاء نسخة بعد"
@@ -97,7 +96,7 @@ fun LocalBackupSettingsCard(
             val date = DateFormat.getDateTimeInstance(
                 DateFormat.MEDIUM,
                 DateFormat.SHORT
-            ).format(Date(lastBackup.toString().toLongOrNull() ?: 0L))
+            ).format(Date(lastBackup))
 
             if (ar) {
                 "آخر نسخة: $date"
@@ -128,10 +127,11 @@ fun LocalBackupSettingsCard(
             )
 
             Text(
-                if (ar)
+                if (ar) {
                     "احفظ مشترياتك ومتاجرك وميزانياتك على هاتفك."
-                else
-                    "Conservez vos achats, magasins et budgets dans un fichier sur votre téléphone.",
+                } else {
+                    "Conservez vos achats, magasins et budgets dans un fichier sur votre téléphone."
+                },
                 color = fg
             )
 
@@ -202,7 +202,7 @@ fun LocalBackupSettingsCard(
 
             if (message.isNotBlank()) {
                 Text(
-                    message,
+                    text = message,
                     color = fg,
                     style = MaterialTheme.typography.bodySmall
                 )
