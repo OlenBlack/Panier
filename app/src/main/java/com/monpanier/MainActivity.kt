@@ -137,6 +137,8 @@ private fun MonPanierV2() {
 
     val context = LocalContext.current
 
+    DriveSyncObserver()
+
     val dao = remember {
         PurchaseDatabase.get(context).purchaseDao()
     }
@@ -154,6 +156,13 @@ private fun MonPanierV2() {
         context.getSharedPreferences(
             "settings",
             Context.MODE_PRIVATE
+
+DriveSyncSettingsCard(
+    fg = fg,
+    card = card,
+    ar = ar
+)
+            
         )
     }
 
