@@ -2838,7 +2838,12 @@ private fun SettingsV2(
             fontWeight = FontWeight.Bold,
             color = fg
         )
-
+        
+DriveSyncSettingsCard(
+    fg = fg,
+    card = card,
+    ar = ar
+)
         /* GESTION DES MAGASINS */
 
         Card(
