@@ -10,24 +10,22 @@ import androidx.room.InvalidationTracker
 @Composable
 fun DriveSyncObserver() {
 
-    val context = LocalContext.current.applicationContext
+    val context = LocalContext.current
 
     val database = remember {
         PurchaseDatabase.get(context)
     }
 
-    DisposableEffect(database, context) {
+    DisposableEffect(database) {
+
+        DriveSyncManager.schedulePeriodic(context)
 
         val observer = object : InvalidationTracker.Observer(
             "purchases",
             "stores",
             "monthly_budgets"
         ) {
-
             override fun onInvalidated(tables: Set<String>) {
-
-                // Déclenche la synchronisation uniquement
-                // si Google Drive est connecté.
                 DriveSyncManager.enqueueSync(context)
             }
         }
