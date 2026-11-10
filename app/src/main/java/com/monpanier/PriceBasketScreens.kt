@@ -1,4 +1,3 @@
-
 package com.monpanier.app
 
 import androidx.compose.foundation.Canvas
@@ -44,7 +43,10 @@ fun PriceHistoryScreen(
         .sortedBy { it.receiptDate }
 
     Column(
-        Modifier.fillMaxSize().padding(pad).padding(16.dp),
+        Modifier
+            .fillMaxSize()
+            .padding(pad)
+            .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         Text(
@@ -55,8 +57,8 @@ fun PriceHistoryScreen(
         )
 
         OutlinedTextField(
-            query,
-            { query = it },
+            value = query,
+            onValueChange = { query = it },
             modifier = Modifier.fillMaxWidth(),
             label = {
                 Text(if (ar) "ابحث عن منتج" else "Rechercher un produit")
@@ -75,7 +77,9 @@ fun PriceHistoryScreen(
                 shape = RoundedCornerShape(18.dp)
             ) {
                 Column(
-                    Modifier.fillMaxWidth().padding(14.dp),
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(14.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Text(
@@ -86,14 +90,17 @@ fun PriceHistoryScreen(
                     )
 
                     Text(
-                        "Dernier prix : ${"%.2f".format(Locale.US, history.last().unitPrice)} ${money.name}",
+                        "Dernier prix : ${
+                            "%.2f".format(Locale.US, history.last().unitPrice)
+                        } ${money.name}",
                         color = Color(0xFF24C879),
                         fontSize = 24.sp,
                         fontWeight = FontWeight.Bold
                     )
 
                     Text(
-                        "${history.size} relevé(s) • ${history.map { it.store }.distinct().size} magasin(s)",
+                        "${history.size} relevé(s) • " +
+                            "${history.map { it.store }.distinct().size} magasin(s)",
                         color = fg
                     )
 
@@ -108,7 +115,11 @@ fun PriceHistoryScreen(
                                 Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceBetween
                             ) {
-                                Text("${p.receiptDate} • ${p.store}", color = fg)
+                                Text(
+                                    "${p.receiptDate} • ${p.store}",
+                                    color = fg
+                                )
+
                                 Text(
                                     "${"%.2f".format(Locale.US, p.unitPrice)} ${money.name}",
                                     color = fg
@@ -123,7 +134,17 @@ fun PriceHistoryScreen(
                     }
 
                     Text(
-                        "Prix minimum : ${"%.2f".format(Locale.US, history.minOf { it.unitPrice })} ${money.name} • Maximum : ${"%.2f".format(Locale.US, history.maxOf { it.unitPrice })} ${money.name}",
+                        "Prix minimum : ${
+                            "%.2f".format(
+                                Locale.US,
+                                history.minOf { it.unitPrice }
+                            )
+                        } ${money.name} • Maximum : ${
+                            "%.2f".format(
+                                Locale.US,
+                                history.maxOf { it.unitPrice }
+                            )
+                        } ${money.name}",
                         color = fg
                     )
                 }
@@ -136,7 +157,10 @@ fun PriceHistoryScreen(
             fontSize = 12.sp
         )
 
-        LazyColumn(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        LazyColumn(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
             items(products) { name ->
                 TextButton(onClick = { query = name }) {
                     Text(name, color = fg)
@@ -147,8 +171,15 @@ fun PriceHistoryScreen(
 }
 
 @Composable
-private fun PriceTrend(values: List<Double>, color: Color) {
-    Canvas(Modifier.fillMaxWidth().height(135.dp)) {
+private fun PriceTrend(
+    values: List<Double>,
+    color: Color
+) {
+    Canvas(
+        Modifier
+            .fillMaxWidth()
+            .height(135.dp)
+    ) {
         if (values.size < 2) return@Canvas
 
         val lo = values.minOrNull() ?: 0.0
@@ -158,7 +189,8 @@ private fun PriceTrend(values: List<Double>, color: Color) {
         val pts = values.mapIndexed { i, v ->
             Offset(
                 size.width * i / (values.size - 1).toFloat(),
-                size.height - ((v - lo) / span).toFloat() *
+                size.height -
+                    ((v - lo) / span).toFloat() *
                     (size.height - 16f) - 8f
             )
         }
@@ -174,54 +206,82 @@ private fun PriceTrend(values: List<Double>, color: Color) {
 }
 
 private data class BasketRecommendation(
-    val index: Int,
-    val product: String,
+    val item: ShoppingListEntity,
     val store: String?,
     val price: Double?,
-    val date: String?
+    val date: String?,
+    val latestPrice: Double?,
+    val savings: Double
 )
 
 @Composable
 fun SmartBasketScreen(
     pad: PaddingValues,
     rows: List<PurchaseEntity>,
+    shoppingItems: List<ShoppingListEntity>,
     money: Money,
     ar: Boolean,
     fg: Color,
-    card: Color
+    card: Color,
+    onAddItem: (ShoppingListEntity) -> Unit,
+    onCheckItem: (ShoppingListEntity) -> Unit,
+    onDeleteItem: (Long) -> Unit,
+    onClearBasket: () -> Unit
 ) {
     var entry by remember { mutableStateOf("") }
-    var basket by remember { mutableStateOf(listOf<String>()) }
+    var showClearDialog by remember { mutableStateOf(false) }
 
     val known = rows.filter {
         it.currency == money.name && it.unitPrice > 0.0
     }
 
-    val recommendations = basket.mapIndexed { index, wanted ->
+    // Construit les recommandations à partir des achats enregistrés.
+    val recommendations = shoppingItems.map { item ->
 
         val matchingPurchases = known.filter {
-            it.product.trim().equals(wanted.trim(), ignoreCase = true) &&
-                it.store.isNotBlank()
+            it.product.trim().equals(
+                item.product.trim(),
+                ignoreCase = true
+            )
         }
 
-        // Cherche le prix le plus bas enregistré dans chaque magasin.
-        val cheapestByStore = matchingPurchases
+        val purchasesWithStore = matchingPurchases.filter {
+            it.store.isNotBlank()
+        }
+
+        // Meilleur prix par magasin.
+        val cheapestByStore = purchasesWithStore
             .groupBy { it.store.trim() }
             .mapValues { (_, purchases) ->
                 purchases.minByOrNull { it.unitPrice }!!
             }
 
-        // Sélectionne le magasin ayant le prix historique le plus bas.
+        // Magasin proposant le prix historique le plus bas.
         val best = cheapestByStore.values.minByOrNull {
             it.unitPrice
         }
 
+        // Dernier prix enregistré pour ce produit.
+        val latest = matchingPurchases.maxByOrNull {
+            it.receiptDate
+        }
+
+        // Économie potentielle par unité.
+        val savingsPerUnit = if (
+            latest != null && best != null
+        ) {
+            (latest.unitPrice - best.unitPrice).coerceAtLeast(0.0)
+        } else {
+            0.0
+        }
+
         BasketRecommendation(
-            index = index,
-            product = wanted,
-            store = best?.store,
-            price = best?.unitPrice,
-            date = best?.receiptDate
+            item = item,
+            store = best?.store ?: item.store.takeIf { it.isNotBlank() },
+            price = best?.unitPrice ?: item.estimatedUnitPrice,
+            date = best?.receiptDate ?: item.priceDate,
+            latestPrice = latest?.unitPrice,
+            savings = savingsPerUnit * item.quantity
         )
     }
 
@@ -229,10 +289,27 @@ fun SmartBasketScreen(
         .groupBy { it.store ?: "Prix inconnu" }
         .toSortedMap()
 
+    val totalEstimated = recommendations.sumOf {
+        (it.price ?: 0.0) * it.item.quantity
+    }
+
+    val totalSavings = recommendations.sumOf {
+        it.savings
+    }
+
+    val unknownCount = recommendations.count {
+        it.price == null
+    }
+
     Column(
-        Modifier.fillMaxSize().padding(pad).padding(16.dp),
+        Modifier
+            .fillMaxSize()
+            .padding(pad)
+            .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
+
+        // Titre.
         Text(
             if (ar) "السلة الذكية" else "Panier intelligent",
             fontSize = 23.sp,
@@ -246,12 +323,13 @@ fun SmartBasketScreen(
             color = fg
         )
 
+        // Ajout d'un produit.
         Row(
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             OutlinedTextField(
-                entry,
-                { entry = it },
+                value = entry,
+                onValueChange = { entry = it },
                 modifier = Modifier.weight(1f),
                 singleLine = true,
                 label = {
@@ -261,11 +339,42 @@ fun SmartBasketScreen(
 
             Button(
                 onClick = {
-                    if (entry.isNotBlank()) {
-                        basket = basket + entry.trim()
+                    val productName = entry.trim()
+
+                    if (productName.isNotBlank()) {
+
+                        val matchingPurchases = known.filter {
+                            it.product.trim().equals(
+                                productName,
+                                ignoreCase = true
+                            )
+                        }
+
+                        val best = matchingPurchases
+                            .filter { it.store.isNotBlank() }
+                            .groupBy { it.store.trim() }
+                            .mapValues { (_, purchases) ->
+                                purchases.minByOrNull { it.unitPrice }!!
+                            }
+                            .values
+                            .minByOrNull { it.unitPrice }
+
+                        onAddItem(
+                            ShoppingListEntity(
+                                product = productName,
+                                quantity = 1.0,
+                                currency = money.name,
+                                store = best?.store ?: "",
+                                estimatedUnitPrice = best?.unitPrice,
+                                priceDate = best?.receiptDate ?: "",
+                                checked = false
+                            )
+                        )
+
                         entry = ""
                     }
-                }
+                },
+                enabled = entry.isNotBlank()
             ) {
                 Icon(
                     Icons.Default.Add,
@@ -274,13 +383,98 @@ fun SmartBasketScreen(
             }
         }
 
-        if (basket.isEmpty()) {
+        // Résumé du panier.
+        if (shoppingItems.isNotEmpty()) {
+            Card(
+                colors = CardDefaults.cardColors(
+                    containerColor = card
+                ),
+                shape = RoundedCornerShape(16.dp)
+            ) {
+                Column(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(7.dp)
+                ) {
+                    Text(
+                        "Résumé du panier",
+                        color = fg,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 17.sp
+                    )
+
+                    Text(
+                        "Produits : ${shoppingItems.size}",
+                        color = fg
+                    )
+
+                    Text(
+                        "Total estimatif : ${
+                            "%.2f".format(Locale.US, totalEstimated)
+                        } ${money.name}",
+                        color = fg,
+                        fontSize = 19.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+
+                    Text(
+                        "Économies potentielles : ${
+                            "%.2f".format(Locale.US, totalSavings)
+                        } ${money.name}",
+                        color = Color(0xFF24C879),
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+
+                    if (unknownCount > 0) {
+                        Text(
+                            "$unknownCount produit(s) sans prix historique fiable.",
+                            color = Color(0xFFFFB74D),
+                            fontSize = 12.sp
+                        )
+                    }
+
+                    Text(
+                        "L'économie est estimée en comparant le dernier prix enregistré au meilleur prix historique.",
+                        color = fg.copy(alpha = .65f),
+                        fontSize = 11.sp
+                    )
+                }
+            }
+        }
+
+        // Vider tout le panier.
+        if (shoppingItems.isNotEmpty()) {
+            OutlinedButton(
+                onClick = {
+                    showClearDialog = true
+                },
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.outlinedButtonColors(
+                    contentColor = Color(0xFFE57373)
+                )
+            ) {
+                Icon(
+                    Icons.Default.Delete,
+                    contentDescription = null
+                )
+
+                Spacer(Modifier.width(8.dp))
+
+                Text("Vider tout le panier")
+            }
+        }
+
+        // Panier vide.
+        if (shoppingItems.isEmpty()) {
             Text(
                 "Ton panier est vide. Ajoute un produit pour commencer.",
                 color = fg.copy(alpha = .7f)
             )
         }
 
+        // Liste persistante des produits.
         LazyColumn(
             Modifier.weight(1f),
             verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -288,12 +482,9 @@ fun SmartBasketScreen(
             storeGroups.forEach { (storeName, products) ->
 
                 item(key = "header_$storeName") {
-                    val estimatedTotal = products.sumOf {
-                        it.price ?: 0.0
-                    }
 
-                    val hasUnknownPrice = products.any {
-                        it.price == null
+                    val estimatedTotal = products.sumOf {
+                        (it.price ?: 0.0) * it.item.quantity
                     }
 
                     Card(
@@ -303,38 +494,39 @@ fun SmartBasketScreen(
                         shape = RoundedCornerShape(16.dp)
                     ) {
                         Column(
-                            Modifier.fillMaxWidth().padding(14.dp),
+                            Modifier
+                                .fillMaxWidth()
+                                .padding(14.dp),
                             verticalArrangement = Arrangement.spacedBy(5.dp)
                         ) {
                             Text(
                                 if (storeName == "Prix inconnu")
                                     "AUTRES PRODUITS"
-                                else "MAGASIN RECOMMANDÉ : $storeName",
+                                else
+                                    "MAGASIN RECOMMANDÉ : $storeName",
                                 color = if (storeName == "Prix inconnu")
                                     Color(0xFFFFB74D)
-                                else Color(0xFF24C879),
+                                else
+                                    Color(0xFF24C879),
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 15.sp
                             )
 
                             if (storeName != "Prix inconnu") {
                                 Text(
-                                    "Total estimatif : ${"%.2f".format(Locale.US, estimatedTotal)} ${money.name}",
+                                    "Total estimatif : ${
+                                        "%.2f".format(
+                                            Locale.US,
+                                            estimatedTotal
+                                        )
+                                    } ${money.name}",
                                     color = fg,
                                     fontWeight = FontWeight.Bold,
-                                    fontSize = 19.sp
+                                    fontSize = 18.sp
                                 )
-
-                                if (hasUnknownPrice) {
-                                    Text(
-                                        "Attention : certains produits de ce groupe n'ont pas de prix historique.",
-                                        color = fg.copy(alpha = .7f),
-                                        fontSize = 11.sp
-                                    )
-                                }
                             } else {
                                 Text(
-                                    "Impossible de calculer un prix avec l'historique disponible.",
+                                    "Impossible de déterminer un magasin avec l'historique disponible.",
                                     color = fg
                                 )
                             }
@@ -343,9 +535,11 @@ fun SmartBasketScreen(
                 }
 
                 items(
-                    products,
-                    key = { "product_${it.index}" }
-                ) { item ->
+                    items = products,
+                    key = { "product_${it.item.id}" }
+                ) { recommendation ->
+
+                    val item = recommendation.item
 
                     Card(
                         colors = CardDefaults.cardColors(
@@ -354,10 +548,26 @@ fun SmartBasketScreen(
                         shape = RoundedCornerShape(14.dp)
                     ) {
                         Column(
-                            Modifier.fillMaxWidth().padding(12.dp),
+                            Modifier
+                                .fillMaxWidth()
+                                .padding(12.dp),
                             verticalArrangement = Arrangement.spacedBy(5.dp)
                         ) {
-                            Row {
+
+                            Row(
+                                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+                            ) {
+
+                                // Cocher un produit sans le supprimer.
+                                Checkbox(
+                                    checked = item.checked,
+                                    onCheckedChange = { checked ->
+                                        onCheckItem(
+                                            item.copy(checked = checked)
+                                        )
+                                    }
+                                )
+
                                 Text(
                                     item.product,
                                     Modifier.weight(1f),
@@ -365,41 +575,91 @@ fun SmartBasketScreen(
                                     fontWeight = FontWeight.Bold
                                 )
 
+                                // Suppression individuelle.
                                 IconButton(
                                     onClick = {
-                                        basket = basket.filterIndexed { i, _ ->
-                                            i != item.index
-                                        }
+                                        onDeleteItem(item.id)
                                     }
                                 ) {
                                     Icon(
                                         Icons.Default.Delete,
-                                        contentDescription = "Supprimer"
+                                        contentDescription = "Supprimer",
+                                        tint = Color(0xFFE57373)
                                     )
                                 }
                             }
 
-                            if (item.price != null) {
+                            Text(
+                                "Quantité : ${item.quantity}",
+                                color = fg.copy(alpha = .75f),
+                                fontSize = 13.sp
+                            )
+
+                            if (recommendation.price != null) {
+
                                 Text(
-                                    "Meilleur prix historique : ${"%.2f".format(Locale.US, item.price)} ${money.name}",
+                                    "Meilleur prix historique : ${
+                                        "%.2f".format(
+                                            Locale.US,
+                                            recommendation.price
+                                        )
+                                    } ${money.name}",
                                     color = Color(0xFF24C879),
                                     fontWeight = FontWeight.Bold
                                 )
 
                                 Text(
-                                    "Magasin : ${item.store}",
+                                    "Magasin : ${recommendation.store ?: "Inconnu"}",
                                     color = fg
                                 )
 
                                 Text(
-                                    "Relevé du : ${item.date}",
+                                    "Relevé du : ${
+                                        recommendation.date ?: "Inconnu"
+                                    }",
                                     color = fg.copy(alpha = .65f),
                                     fontSize = 12.sp
                                 )
+
+                                if (recommendation.latestPrice != null) {
+                                    Text(
+                                        "Dernier prix enregistré : ${
+                                            "%.2f".format(
+                                                Locale.US,
+                                                recommendation.latestPrice
+                                            )
+                                        } ${money.name}",
+                                        color = fg.copy(alpha = .8f),
+                                        fontSize = 12.sp
+                                    )
+                                }
+
+                                if (recommendation.savings > 0.0) {
+                                    Text(
+                                        "Économie potentielle : ${
+                                            "%.2f".format(
+                                                Locale.US,
+                                                recommendation.savings
+                                            )
+                                        } ${money.name}",
+                                        color = Color(0xFF24C879),
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+
                             } else {
                                 Text(
-                                    "Aucun prix exact disponible dans l'historique.",
+                                    "Aucun prix disponible dans l'historique.",
                                     color = Color(0xFFFFB74D)
+                                )
+                            }
+
+                            if (item.checked) {
+                                Text(
+                                    "Produit acheté",
+                                    color = Color(0xFF24C879),
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 12.sp
                                 )
                             }
                         }
@@ -409,9 +669,50 @@ fun SmartBasketScreen(
         }
 
         Text(
-            "Comparaison basée sur les anciens tickets enregistrés. Les prix peuvent avoir changé depuis le dernier achat. Le total est calculé pour une unité de chaque produit.",
+            "Les prix proviennent des anciens tickets enregistrés. " +
+                "Ils peuvent avoir changé depuis le dernier achat.",
             color = fg.copy(alpha = .65f),
             fontSize = 11.sp
+        )
+    }
+
+    // Confirmation avant de vider le panier.
+    if (showClearDialog) {
+        AlertDialog(
+            onDismissRequest = {
+                showClearDialog = false
+            },
+            title = {
+                Text("Vider le panier ?")
+            },
+            text = {
+                Text(
+                    "Tous les produits de ton panier seront supprimés. " +
+                        "Cette opération ne supprime pas les tickets enregistrés."
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        onClearBasket()
+                        showClearDialog = false
+                    }
+                ) {
+                    Text(
+                        "Vider",
+                        color = Color(0xFFE57373)
+                    )
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        showClearDialog = false
+                    }
+                ) {
+                    Text("Annuler")
+                }
+            }
         )
     }
 }
