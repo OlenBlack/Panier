@@ -152,6 +152,9 @@ LocalBackupObserver()
     val budgets by dao.observeBudgets()
         .collectAsState(initial = emptyList())
 
+val shoppingItems by dao.observeShoppingList()
+    .collectAsState(initial = emptyList())
+        
     val prefs = remember {
         context.getSharedPreferences(
             "settings",
@@ -614,13 +617,38 @@ LocalBackupObserver()
                     )
 
                     Screen.BASKET -> SmartBasketScreen(
-                        pad,
-                        purchases,
-                        money,
-                        isAr,
-                        fg,
-                        card
-                    )
+    pad = pad,
+    rows = purchases,
+    shoppingItems = shoppingItems,
+    money = money,
+    ar = isAr,
+    fg = fg,
+    card = card,
+
+    onAddItem = { item ->
+        scope.launch {
+            dao.insertShoppingItem(item)
+        }
+    },
+
+    onCheckItem = { item ->
+        scope.launch {
+            dao.updateShoppingItem(item)
+        }
+    },
+
+    onDeleteItem = { itemId ->
+        scope.launch {
+            dao.deleteShoppingItem(itemId)
+        }
+    },
+
+    onClearBasket = {
+        scope.launch {
+            dao.clearShoppingList()
+        }
+    }
+)
 
                     Screen.SETTINGS -> SettingsV2(
                         pad = pad,
