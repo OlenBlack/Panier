@@ -1508,8 +1508,12 @@ private fun CropScreen(
     onRetake: () -> Unit
 ) {
     val density = LocalDensity.current
-    val handle = with(density) { 40.dp.toPx() }
     val minSize = with(density) { 60.dp.toPx() }
+
+    // Image pouvant être tournée sans modifier l'original.
+    var displayBitmap by remember(bitmap) {
+        mutableStateOf(bitmap)
+    }
 
     var viewW by remember { mutableStateOf(0f) }
     var viewH by remember { mutableStateOf(0f) }
@@ -1521,17 +1525,41 @@ private fun CropScreen(
 
     var active by remember { mutableStateOf(0) }
 
+    // Rotation de l'image de 90 degrés.
+    fun rotateImage(degrees: Float) {
+        val matrix = Matrix().apply {
+            postRotate(degrees)
+        }
+
+        displayBitmap = Bitmap.createBitmap(
+            displayBitmap,
+            0,
+            0,
+            displayBitmap.width,
+            displayBitmap.height,
+            matrix,
+            true
+        )
+
+        active = 0
+    }
+
     val scale =
         if (viewW > 0f && viewH > 0f)
-            minOf(viewW / bitmap.width, viewH / bitmap.height)
+            minOf(
+                viewW / displayBitmap.width,
+                viewH / displayBitmap.height
+            )
         else 1f
 
-    val imgW = bitmap.width * scale
-    val imgH = bitmap.height * scale
+    val imgW = displayBitmap.width * scale
+    val imgH = displayBitmap.height * scale
+
     val offX = (viewW - imgW) / 2f
     val offY = (viewH - imgH) / 2f
 
-    LaunchedEffect(viewW, viewH) {
+    // Réinitialise le cadre après chaque rotation.
+    LaunchedEffect(viewW, viewH, displayBitmap) {
         if (viewW > 0f && viewH > 0f) {
             cl = offX + imgW * 0.03f
             cr = offX + imgW * 0.97f
@@ -1547,6 +1575,7 @@ private fun CropScreen(
             .padding(12.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
+
         Text(
             if (ar) "اضبط إطار الإيصال"
             else "Cadrer le ticket",
@@ -1556,12 +1585,64 @@ private fun CropScreen(
         )
 
         Text(
-            if (ar) "حرّك الزوايا لتحيط بجدول المنتجات فقط."
-            else "Glisse les coins pour garder le tableau des produits.",
+            if (ar)
+                "يمكنك تدوير الصورة قبل قراءة الإيصال."
+            else
+                "Tu peux tourner l'image avant de lire le ticket.",
             fontSize = 12.sp,
             color = fg.copy(alpha = .7f)
         )
 
+        // BOUTONS DE ROTATION
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            OutlinedButton(
+                onClick = {
+                    rotateImage(-90f)
+                },
+                enabled = !busy
+            ) {
+                Icon(
+                    Icons.Default.RotateLeft,
+                    contentDescription = null
+                )
+
+                Spacer(Modifier.width(6.dp))
+
+                Text(
+                    if (ar) "يسار 90°"
+                    else "Gauche 90°",
+                    fontSize = 12.sp
+                )
+            }
+
+            Spacer(Modifier.width(12.dp))
+
+            OutlinedButton(
+                onClick = {
+                    rotateImage(90f)
+                },
+                enabled = !busy
+            ) {
+                Icon(
+                    Icons.Default.RotateRight,
+                    contentDescription = null
+                )
+
+                Spacer(Modifier.width(6.dp))
+
+                Text(
+                    if (ar) "يمين 90°"
+                    else "Droite 90°",
+                    fontSize = 12.sp
+                )
+            }
+        }
+
+        // ZONE DE CADRAGE
         Box(
             Modifier
                 .weight(1f)
@@ -1570,21 +1651,29 @@ private fun CropScreen(
                     viewW = it.width.toFloat()
                     viewH = it.height.toFloat()
                 }
-                .pointerInput(viewW, viewH) {
+                .pointerInput(
+                    viewW,
+                    viewH,
+                    displayBitmap,
+                    cl,
+                    ct,
+                    cr,
+                    cb
+                ) {
                     detectDragGestures(
                         onDragStart = { p ->
                             active = when {
-                                abs(p.x - cl) < handle &&
-                                    abs(p.y - ct) < handle -> 1
+                                abs(p.x - cl) < 40.dp.toPx() &&
+                                    abs(p.y - ct) < 40.dp.toPx() -> 1
 
-                                abs(p.x - cr) < handle &&
-                                    abs(p.y - ct) < handle -> 2
+                                abs(p.x - cr) < 40.dp.toPx() &&
+                                    abs(p.y - ct) < 40.dp.toPx() -> 2
 
-                                abs(p.x - cl) < handle &&
-                                    abs(p.y - cb) < handle -> 3
+                                abs(p.x - cl) < 40.dp.toPx() &&
+                                    abs(p.y - cb) < 40.dp.toPx() -> 3
 
-                                abs(p.x - cr) < handle &&
-                                    abs(p.y - cb) < handle -> 4
+                                abs(p.x - cr) < 40.dp.toPx() &&
+                                    abs(p.y - cb) < 40.dp.toPx() -> 4
 
                                 p.x >= cl && p.x <= cr &&
                                     p.y >= ct && p.y <= cb -> 5
@@ -1592,8 +1681,15 @@ private fun CropScreen(
                                 else -> 0
                             }
                         },
-                        onDragEnd = { active = 0 },
-                        onDragCancel = { active = 0 },
+
+                        onDragEnd = {
+                            active = 0
+                        },
+
+                        onDragCancel = {
+                            active = 0
+                        },
+
                         onDrag = { change, d ->
                             change.consume()
 
@@ -1655,14 +1751,16 @@ private fun CropScreen(
                     )
                 }
         ) {
+
             Image(
-                bitmap = bitmap.asImageBitmap(),
+                bitmap = displayBitmap.asImageBitmap(),
                 contentDescription = null,
                 contentScale = ContentScale.Fit,
                 modifier = Modifier.fillMaxSize()
             )
 
             Canvas(Modifier.fillMaxSize()) {
+
                 val dim = Color.Black.copy(alpha = 0.55f)
 
                 drawRect(
@@ -1704,48 +1802,59 @@ private fun CropScreen(
         }
 
         if (message.isNotBlank()) {
-            Text(message, color = Color(0xFFD32F2F), fontSize = 12.sp)
+            Text(
+                message,
+                color = Color(0xFFD32F2F),
+                fontSize = 12.sp
+            )
         }
 
+        // BOUTONS DU BAS
         Row(
             Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
+
             OutlinedButton(
                 onClick = onRetake,
                 enabled = !busy,
                 modifier = Modifier.weight(1f)
             ) {
-                Text(if (ar) "إعادة التصوير" else "Reprendre", fontSize = 12.sp)
+                Text(
+                    if (ar) "إعادة التصوير"
+                    else "Reprendre",
+                    fontSize = 12.sp
+                )
             }
 
             Button(
                 onClick = {
+
                     val x = ((cl - offX) / scale)
                         .toInt()
-                        .coerceIn(0, bitmap.width - 1)
+                        .coerceIn(0, displayBitmap.width - 1)
 
                     val y = ((ct - offY) / scale)
                         .toInt()
-                        .coerceIn(0, bitmap.height - 1)
+                        .coerceIn(0, displayBitmap.height - 1)
 
                     val w = ((cr - cl) / scale)
                         .toInt()
-                        .coerceIn(1, bitmap.width - x)
+                        .coerceIn(1, displayBitmap.width - x)
 
                     val h = ((cb - ct) / scale)
                         .toInt()
-                        .coerceIn(1, bitmap.height - y)
+                        .coerceIn(1, displayBitmap.height - y)
 
-                    onConfirm(
-                        Bitmap.createBitmap(
-                            bitmap,
-                            x,
-                            y,
-                            w,
-                            h
-                        )
+                    val cropped = Bitmap.createBitmap(
+                        displayBitmap,
+                        x,
+                        y,
+                        w,
+                        h
                     )
+
+                    onConfirm(cropped)
                 },
                 enabled = !busy,
                 modifier = Modifier.weight(1f)
