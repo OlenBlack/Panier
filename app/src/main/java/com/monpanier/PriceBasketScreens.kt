@@ -2,6 +2,7 @@
 package com.monpanier.app
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -213,6 +214,32 @@ fun SmartBasketScreen(
     onClearBasket: () -> Unit
 ) {
     var entry by remember { mutableStateOf("") }
+var suggestionSelected by remember { mutableStateOf(false) }
+
+// Produits déjà achetés correspondant à la saisie
+val productSuggestions = if (entry.isBlank() || suggestionSelected) {
+    emptyList()
+} else {
+    rows.asSequence()
+        .filter {
+            it.product.isNotBlank() &&
+            it.product.contains(entry.trim(), ignoreCase = true)
+        }
+        .sortedByDescending { it.receiptDate }
+        .distinctBy {
+            it.product.trim().lowercase(Locale.ROOT)
+        }
+        .filterNot { purchase ->
+            shoppingItems.any {
+                it.product.trim().equals(
+                    purchase.product.trim(),
+                    ignoreCase = true
+                )
+            }
+        }
+        .take(6)
+        .toList()
+}
 
     val known = rows.filter {
         it.currency == money.name && it.unitPrice > 0.0
@@ -286,7 +313,10 @@ fun SmartBasketScreen(
         ) {
             OutlinedTextField(
                 value = entry,
-                onValueChange = { entry = it },
+                onValueChange = {
+    entry = it
+    suggestionSelected = false
+}
                 modifier = Modifier.weight(1f),
                 singleLine = true,
                 label = {
@@ -329,6 +359,7 @@ fun SmartBasketScreen(
                         )
 
                         entry = ""
+                        suggestionSelected = false
                     }
                 },
                 enabled = entry.isNotBlank(),
@@ -343,7 +374,74 @@ fun SmartBasketScreen(
                 )
             }
         }
+if (productSuggestions.isNotEmpty()) {
 
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 3.dp, bottom = 4.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = card
+        ),
+        shape = RoundedCornerShape(10.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(vertical = 3.dp)
+        ) {
+
+            Text(
+                "Produits déjà achetés",
+                color = fg.copy(alpha = 0.65f),
+                fontSize = 11.sp,
+                modifier = Modifier.padding(
+                    horizontal = 12.dp,
+                    vertical = 5.dp
+                )
+            )
+
+            productSuggestions.forEach { purchase ->
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            entry = purchase.product.trim()
+                            suggestionSelected = true
+                        }
+                        .padding(
+                            horizontal = 12.dp,
+                            vertical = 9.dp
+                        ),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+
+                    Icon(
+                        Icons.Default.History,
+                        contentDescription = null,
+                        tint = Color(0xFF24C879),
+                        modifier = Modifier.size(18.dp)
+                    )
+
+                    Spacer(Modifier.width(10.dp))
+
+                    Text(
+                        purchase.product,
+                        color = fg,
+                        fontSize = 14.sp,
+                        modifier = Modifier.weight(1f)
+                    )
+
+                    Icon(
+                        Icons.Default.Add,
+                        contentDescription = "Sélectionner",
+                        tint = fg.copy(alpha = 0.6f),
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+            }
+        }
+    }
+}
         Spacer(Modifier.height(6.dp))
 
         if (shoppingItems.isEmpty()) {
