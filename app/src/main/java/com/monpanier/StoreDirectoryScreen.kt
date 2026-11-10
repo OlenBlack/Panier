@@ -40,30 +40,24 @@ fun StoreDirectoryScreen(
     var storeName by remember { mutableStateOf("") }
     var message by remember { mutableStateOf("") }
 
-    fun parseAmount(value: String): Double {
-        return value
-            .trim()
-            .replace(" ", "")
-            .replace(",", ".")
-            .toDoubleOrNull() ?: 0.0
-    }
+    
 
     val currencyPurchases = remember(purchases, currencyName) {
         purchases.filter { it.currency == currencyName }
     }
 
     val storeTotals = remember(stores, currencyPurchases) {
-        stores.associate { store ->
-            store.name.trim().lowercase(Locale.ROOT) to
-                currencyPurchases
-                    .filter {
-                        it.store.trim().equals(
-                            store.name.trim(),
-                            ignoreCase = true
-                        )
-                    }
-                    .sumOf { parseAmount(it.total) }
-        }
+    stores.associate { store ->
+        store.name.trim().lowercase(Locale.ROOT) to
+            currencyPurchases
+                .filter {
+                    it.store.trim().equals(
+                        store.name.trim(),
+                        ignoreCase = true
+                    )
+                }
+                .sumOf { it.total }
+    }
     }
 
     val overallTotal = storeTotals.values.sum()
