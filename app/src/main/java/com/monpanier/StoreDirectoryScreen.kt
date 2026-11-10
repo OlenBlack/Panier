@@ -18,11 +18,14 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
+import java.util.Locale
 
 @Composable
 fun StoreDirectoryScreen(
     pad: PaddingValues,
     stores: List<StoreEntity>,
+    purchases: List<PurchaseEntity>,
+    currencyName: String,
     fg: Color,
     card: Color,
     dao: PurchaseDao,
@@ -36,6 +39,34 @@ fun StoreDirectoryScreen(
 
     var storeName by remember { mutableStateOf("") }
     var message by remember { mutableStateOf("") }
+
+    fun parseAmount(value: String): Double {
+        return value
+            .trim()
+            .replace(" ", "")
+            .replace(",", ".")
+            .toDoubleOrNull() ?: 0.0
+    }
+
+    val currencyPurchases = remember(purchases, currencyName) {
+        purchases.filter { it.currency == currencyName }
+    }
+
+    val storeTotals = remember(stores, currencyPurchases) {
+        stores.associate { store ->
+            store.name.trim().lowercase(Locale.ROOT) to
+                currencyPurchases
+                    .filter {
+                        it.store.trim().equals(
+                            store.name.trim(),
+                            ignoreCase = true
+                        )
+                    }
+                    .sumOf { parseAmount(it.total) }
+        }
+    }
+
+    val overallTotal = storeTotals.values.sum()
 
     Column(
         Modifier
@@ -66,6 +97,31 @@ fun StoreDirectoryScreen(
             "Les magasins restent enregistrés même si tu supprimes leurs tickets.",
             color = fg.copy(alpha = 0.7f)
         )
+
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(
+                containerColor = card
+            )
+        ) {
+            Column(
+                Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(5.dp)
+            ) {
+                Text(
+                    "Dépenses dans les magasins",
+                    color = fg.copy(alpha = 0.7f)
+                )
+
+                Text(
+                    String.format(Locale.getDefault(), "%.2f", overallTotal) +
+                        " $currencyName",
+                    color = fg,
+                    fontSize = 23.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        }
 
         Button(
             onClick = {
@@ -98,55 +154,79 @@ fun StoreDirectoryScreen(
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             items(stores, key = { it.id }) { store ->
+
+                val total = storeTotals[
+                    store.name.trim().lowercase(Locale.ROOT)
+                ] ?: 0.0
+
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     colors = CardDefaults.cardColors(
                         containerColor = card
                     )
                 ) {
-                    Row(
-                        modifier = Modifier
+                    Column(
+                        Modifier
                             .fillMaxWidth()
                             .padding(12.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Icon(
-                            Icons.Default.Store,
-                            contentDescription = null,
-                            tint = Color(0xFF078A4B)
-                        )
-
-                        Spacer(Modifier.width(12.dp))
-
-                        Text(
-                            store.name,
-                            modifier = Modifier.weight(1f),
-                            color = fg,
-                            fontWeight = FontWeight.SemiBold
-                        )
-
-                        IconButton(
-                            onClick = {
-                                storeName = store.name
-                                editingStore = store
-                            }
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
                             Icon(
-                                Icons.Default.Edit,
-                                contentDescription = "Modifier"
+                                Icons.Default.Store,
+                                contentDescription = null,
+                                tint = Color(0xFF078A4B)
                             )
-                        }
 
-                        IconButton(
-                            onClick = {
-                                deletingStore = store
+                            Spacer(Modifier.width(12.dp))
+
+                            Column(
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text(
+                                    store.name,
+                                    color = fg,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+
+                                Text(
+                                    "Total des achats : " +
+                                        String.format(
+                                            Locale.getDefault(),
+                                            "%.2f",
+                                            total
+                                        ) + " $currencyName",
+                                    color = Color(0xFF078A4B),
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 14.sp
+                                )
                             }
-                        ) {
-                            Icon(
-                                Icons.Default.Delete,
-                                contentDescription = "Supprimer",
-                                tint = Color(0xFFD32F2F)
-                            )
+
+                            IconButton(
+                                onClick = {
+                                    storeName = store.name
+                                    editingStore = store
+                                }
+                            ) {
+                                Icon(
+                                    Icons.Default.Edit,
+                                    contentDescription = "Modifier"
+                                )
+                            }
+
+                            IconButton(
+                                onClick = {
+                                    deletingStore = store
+                                }
+                            ) {
+                                Icon(
+                                    Icons.Default.Delete,
+                                    contentDescription = "Supprimer",
+                                    tint = Color(0xFFD32F2F)
+                                )
+                            }
                         }
                     }
                 }
