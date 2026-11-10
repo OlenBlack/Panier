@@ -10,6 +10,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -32,14 +33,19 @@ fun PriceHistoryScreen(
 ) {
     var query by remember { mutableStateOf("") }
 
-    val data = rows.filter { it.currency == money.name }
+    val data = rows.filter {
+        it.currency == money.name
+    }
 
     val products = data.map { it.product }
         .distinct()
         .sorted()
 
-    val selected = products.firstOrNull { it.equals(query, true) }
-        ?: products.firstOrNull { it.contains(query, true) }
+    val selected = products.firstOrNull {
+        it.equals(query, true)
+    } ?: products.firstOrNull {
+        it.contains(query, true)
+    }
 
     val history = data
         .filter { it.product == selected }
@@ -64,7 +70,10 @@ fun PriceHistoryScreen(
             onValueChange = { query = it },
             modifier = Modifier.fillMaxWidth(),
             label = {
-                Text(if (ar) "ابحث عن منتج" else "Rechercher un produit")
+                Text(
+                    if (ar) "ابحث عن منتج"
+                    else "Rechercher un produit"
+                )
             }
         )
 
@@ -76,7 +85,9 @@ fun PriceHistoryScreen(
             )
         } else {
             Card(
-                colors = CardDefaults.cardColors(containerColor = card),
+                colors = CardDefaults.cardColors(
+                    containerColor = card
+                ),
                 shape = RoundedCornerShape(18.dp)
             ) {
                 Column(
@@ -115,7 +126,11 @@ fun PriceHistoryScreen(
                                 Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceBetween
                             ) {
-                                Text("${p.receiptDate} • ${p.store}", color = fg)
+                                Text(
+                                    "${p.receiptDate} • ${p.store}",
+                                    color = fg
+                                )
+
                                 Text(
                                     "${"%.2f".format(Locale.US, p.unitPrice)} ${money.name}",
                                     color = fg
@@ -148,7 +163,9 @@ fun PriceHistoryScreen(
             verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
             items(products) { name ->
-                TextButton(onClick = { query = name }) {
+                TextButton(
+                    onClick = { query = name }
+                ) {
                     Text(name, color = fg)
                 }
             }
@@ -170,7 +187,9 @@ private fun PriceTrend(
 
         val lo = values.minOrNull() ?: 0.0
         val hi = values.maxOrNull() ?: 1.0
-        val span = (hi - lo).takeIf { it > 0.0 } ?: 1.0
+        val span = (hi - lo).takeIf {
+            it > 0.0
+        } ?: 1.0
 
         val pts = values.mapIndexed { i, v ->
             Offset(
@@ -181,7 +200,12 @@ private fun PriceTrend(
         }
 
         for (i in 0 until pts.lastIndex) {
-            drawLine(color, pts[i], pts[i + 1], 4f)
+            drawLine(
+                color,
+                pts[i],
+                pts[i + 1],
+                4f
+            )
         }
 
         pts.forEach {
@@ -214,37 +238,47 @@ fun SmartBasketScreen(
     onClearBasket: () -> Unit
 ) {
     var entry by remember { mutableStateOf("") }
-var suggestionSelected by remember { mutableStateOf(false) }
+    var suggestionSelected by remember { mutableStateOf(false) }
 
-// Produits déjà achetés correspondant à la saisie
-val productSuggestions = if (entry.isBlank() || suggestionSelected) {
-    emptyList()
-} else {
-    rows.asSequence()
-        .filter {
-            it.product.isNotBlank() &&
-            it.product.contains(entry.trim(), ignoreCase = true)
-        }
-        .sortedByDescending { it.receiptDate }
-        .distinctBy {
-            it.product.trim().lowercase(Locale.ROOT)
-        }
-        .filterNot { purchase ->
-            shoppingItems.any {
-                it.product.trim().equals(
-                    purchase.product.trim(),
-                    ignoreCase = true
-                )
-            }
-        }
-        .take(6)
-        .toList()
-}
-
+    // Historique des achats avec prix et devise correspondants
     val known = rows.filter {
-        it.currency == money.name && it.unitPrice > 0.0
+        it.currency == money.name &&
+            it.unitPrice > 0.0
     }
 
+    // Suggestions de produits déjà achetés
+    val productSuggestions = if (
+        entry.isBlank() || suggestionSelected
+    ) {
+        emptyList()
+    } else {
+        rows.asSequence()
+            .filter {
+                it.product.isNotBlank() &&
+                    it.product.contains(
+                        entry.trim(),
+                        ignoreCase = true
+                    )
+            }
+            .sortedByDescending {
+                it.receiptDate
+            }
+            .distinctBy {
+                it.product.trim().lowercase(Locale.ROOT)
+            }
+            .filterNot { purchase ->
+                shoppingItems.any {
+                    it.product.trim().equals(
+                        purchase.product.trim(),
+                        ignoreCase = true
+                    )
+                }
+            }
+            .take(6)
+            .toList()
+    }
+
+    // Calcul des recommandations et des meilleurs prix
     val recommendations = shoppingItems.map { item ->
 
         val matchingPurchases = known.filter {
@@ -258,25 +292,34 @@ val productSuggestions = if (entry.isBlank() || suggestionSelected) {
             .filter { it.store.isNotBlank() }
             .groupBy { it.store.trim() }
             .mapValues { (_, purchases) ->
-                purchases.minByOrNull { it.unitPrice }!!
+                purchases.minByOrNull {
+                    it.unitPrice
+                }!!
             }
             .values
-            .minByOrNull { it.unitPrice }
+            .minByOrNull {
+                it.unitPrice
+            }
 
         val latest = matchingPurchases.maxByOrNull {
             it.receiptDate
         }
 
-        val savingsPerUnit = if (latest != null && best != null) {
-            (latest.unitPrice - best.unitPrice).coerceAtLeast(0.0)
+        val savingsPerUnit = if (
+            latest != null && best != null
+        ) {
+            (latest.unitPrice - best.unitPrice)
+                .coerceAtLeast(0.0)
         } else {
             0.0
         }
 
         BasketRecommendation(
             item = item,
-            store = best?.store ?: item.store.takeIf { it.isNotBlank() },
-            price = best?.unitPrice ?: item.estimatedUnitPrice,
+            store = best?.store
+                ?: item.store.takeIf { it.isNotBlank() },
+            price = best?.unitPrice
+                ?: item.estimatedUnitPrice,
             date = best?.receiptDate ?: item.priceDate,
             latestPrice = latest?.unitPrice,
             savings = savingsPerUnit * item.quantity
@@ -284,7 +327,9 @@ val productSuggestions = if (entry.isBlank() || suggestionSelected) {
     }
 
     val storeGroups = recommendations
-        .groupBy { it.store ?: "Prix inconnu" }
+        .groupBy {
+            it.store ?: "Prix inconnu"
+        }
         .toSortedMap()
 
     val totalSavings = recommendations.sumOf {
@@ -299,7 +344,8 @@ val productSuggestions = if (entry.isBlank() || suggestionSelected) {
     ) {
 
         Text(
-            if (ar) "السلة الذكية" else "Panier intelligent",
+            if (ar) "السلة الذكية"
+            else "Panier intelligent",
             fontSize = 21.sp,
             fontWeight = FontWeight.Bold,
             color = fg
@@ -307,6 +353,7 @@ val productSuggestions = if (entry.isBlank() || suggestionSelected) {
 
         Spacer(Modifier.height(5.dp))
 
+        // Champ de saisie et bouton d'ajout
         Row(
             horizontalArrangement = Arrangement.spacedBy(6.dp),
             verticalAlignment = Alignment.CenterVertically
@@ -314,13 +361,16 @@ val productSuggestions = if (entry.isBlank() || suggestionSelected) {
             OutlinedTextField(
                 value = entry,
                 onValueChange = {
-    entry = it
-    suggestionSelected = false
-}
+                    entry = it
+                    suggestionSelected = false
+                },
                 modifier = Modifier.weight(1f),
                 singleLine = true,
                 label = {
-                    Text(if (ar) "اسم المنتج" else "Produit à ajouter")
+                    Text(
+                        if (ar) "اسم المنتج"
+                        else "Produit à ajouter"
+                    )
                 },
                 shape = RoundedCornerShape(12.dp)
             )
@@ -330,6 +380,7 @@ val productSuggestions = if (entry.isBlank() || suggestionSelected) {
                     val productName = entry.trim()
 
                     if (productName.isNotBlank()) {
+
                         val matchingPurchases = known.filter {
                             it.product.trim().equals(
                                 productName,
@@ -341,10 +392,14 @@ val productSuggestions = if (entry.isBlank() || suggestionSelected) {
                             .filter { it.store.isNotBlank() }
                             .groupBy { it.store.trim() }
                             .mapValues { (_, purchases) ->
-                                purchases.minByOrNull { it.unitPrice }!!
+                                purchases.minByOrNull {
+                                    it.unitPrice
+                                }!!
                             }
                             .values
-                            .minByOrNull { it.unitPrice }
+                            .minByOrNull {
+                                it.unitPrice
+                            }
 
                         onAddItem(
                             ShoppingListEntity(
@@ -374,77 +429,86 @@ val productSuggestions = if (entry.isBlank() || suggestionSelected) {
                 )
             }
         }
-if (productSuggestions.isNotEmpty()) {
 
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(top = 3.dp, bottom = 4.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = card
-        ),
-        shape = RoundedCornerShape(10.dp)
-    ) {
-        Column(
-            modifier = Modifier.padding(vertical = 3.dp)
-        ) {
+        // Liste des suggestions
+        if (productSuggestions.isNotEmpty()) {
 
-            Text(
-                "Produits déjà achetés",
-                color = fg.copy(alpha = 0.65f),
-                fontSize = 11.sp,
-                modifier = Modifier.padding(
-                    horizontal = 12.dp,
-                    vertical = 5.dp
-                )
-            )
-
-            productSuggestions.forEach { purchase ->
-
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable {
-                            entry = purchase.product.trim()
-                            suggestionSelected = true
-                        }
-                        .padding(
-                            horizontal = 12.dp,
-                            vertical = 9.dp
-                        ),
-                    verticalAlignment = Alignment.CenterVertically
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(
+                        top = 3.dp,
+                        bottom = 4.dp
+                    ),
+                colors = CardDefaults.cardColors(
+                    containerColor = card
+                ),
+                shape = RoundedCornerShape(10.dp)
+            ) {
+                Column(
+                    modifier = Modifier.padding(vertical = 3.dp)
                 ) {
 
-                    Icon(
-                        Icons.Default.History,
-                        contentDescription = null,
-                        tint = Color(0xFF24C879),
-                        modifier = Modifier.size(18.dp)
-                    )
-
-                    Spacer(Modifier.width(10.dp))
-
                     Text(
-                        purchase.product,
-                        color = fg,
-                        fontSize = 14.sp,
-                        modifier = Modifier.weight(1f)
+                        if (ar) "المنتجات المشتراة سابقا"
+                        else "Produits déjà achetés",
+                        color = fg.copy(alpha = 0.65f),
+                        fontSize = 11.sp,
+                        modifier = Modifier.padding(
+                            horizontal = 12.dp,
+                            vertical = 5.dp
+                        )
                     )
 
-                    Icon(
-                        Icons.Default.Add,
-                        contentDescription = "Sélectionner",
-                        tint = fg.copy(alpha = 0.6f),
-                        modifier = Modifier.size(18.dp)
-                    )
+                    productSuggestions.forEach { purchase ->
+
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    entry = purchase.product.trim()
+                                    suggestionSelected = true
+                                }
+                                .padding(
+                                    horizontal = 12.dp,
+                                    vertical = 9.dp
+                                ),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+
+                            Icon(
+                                Icons.Default.History,
+                                contentDescription = null,
+                                tint = Color(0xFF24C879),
+                                modifier = Modifier.size(18.dp)
+                            )
+
+                            Spacer(Modifier.width(10.dp))
+
+                            Text(
+                                purchase.product,
+                                color = fg,
+                                fontSize = 14.sp,
+                                modifier = Modifier.weight(1f)
+                            )
+
+                            Icon(
+                                Icons.Default.Add,
+                                contentDescription = "Sélectionner",
+                                tint = fg.copy(alpha = 0.6f),
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    }
                 }
             }
         }
-    }
-}
+
         Spacer(Modifier.height(6.dp))
 
+        // Affichage du panier
         if (shoppingItems.isEmpty()) {
+
             Box(
                 Modifier
                     .weight(1f)
@@ -456,39 +520,52 @@ if (productSuggestions.isNotEmpty()) {
                     color = fg.copy(alpha = .7f)
                 )
             }
+
         } else {
+
             LazyColumn(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(5.dp)
             ) {
+
                 storeGroups.forEach { (storeName, products) ->
 
                     item(key = "header_$storeName") {
+
                         Row(
                             Modifier
                                 .fillMaxWidth()
-                                .padding(top = 3.dp, bottom = 1.dp),
+                                .padding(
+                                    top = 3.dp,
+                                    bottom = 1.dp
+                                ),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
+
                             Text(
                                 if (storeName == "Prix inconnu")
                                     "AUTRES PRODUITS"
                                 else
                                     storeName.uppercase(),
-                                color = if (storeName == "Prix inconnu")
+                                color = if (
+                                    storeName == "Prix inconnu"
+                                ) {
                                     Color(0xFFFFB74D)
-                                else
-                                    Color(0xFF24C879),
+                                } else {
+                                    Color(0xFF24C879)
+                                },
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 13.sp
                             )
 
                             if (storeName != "Prix inconnu") {
+
                                 val groupTotal = products.sumOf {
-                                    (it.price ?: 0.0) * it.item.quantity
+                                    (it.price ?: 0.0) *
+                                        it.item.quantity
                                 }
 
                                 Text(
@@ -514,12 +591,17 @@ if (productSuggestions.isNotEmpty()) {
                             ),
                             shape = RoundedCornerShape(11.dp)
                         ) {
+
                             Row(
                                 Modifier
                                     .fillMaxWidth()
-                                    .padding(horizontal = 7.dp, vertical = 4.dp),
+                                    .padding(
+                                        horizontal = 7.dp,
+                                        vertical = 4.dp
+                                    ),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
+
                                 Checkbox(
                                     checked = item.checked,
                                     onCheckedChange = { checked ->
@@ -536,6 +618,7 @@ if (productSuggestions.isNotEmpty()) {
                                         .padding(start = 5.dp),
                                     verticalArrangement = Arrangement.spacedBy(1.dp)
                                 ) {
+
                                     Text(
                                         item.product,
                                         color = fg,
@@ -544,12 +627,15 @@ if (productSuggestions.isNotEmpty()) {
                                     )
 
                                     if (recommendation.price != null) {
+
                                         Text(
                                             "${"%.2f".format(Locale.US, recommendation.price)} ${money.name} • ${recommendation.store ?: "Magasin inconnu"}",
                                             color = Color(0xFF24C879),
                                             fontSize = 12.sp
                                         )
+
                                     } else {
+
                                         Text(
                                             "Prix inconnu",
                                             color = Color(0xFFFFB74D),
@@ -590,13 +676,18 @@ if (productSuggestions.isNotEmpty()) {
             color = fg.copy(alpha = .15f)
         )
 
+        // Économies potentielles
         Row(
             Modifier
                 .fillMaxWidth()
-                .padding(top = 8.dp, bottom = 4.dp),
+                .padding(
+                    top = 8.dp,
+                    bottom = 4.dp
+                ),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
+
             Text(
                 "Économies potentielles",
                 color = fg,
