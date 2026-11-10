@@ -1495,6 +1495,8 @@ private fun runOcr(
 
 /* ÉCRAN DE CADRAGE */
 
+
+
 @Composable
 private fun CropScreen(
     pad: PaddingValues,
@@ -1509,23 +1511,53 @@ private fun CropScreen(
 ) {
     val density = LocalDensity.current
     val minSize = with(density) { 60.dp.toPx() }
+    val touchSize = with(density) { 40.dp.toPx() }
 
-    // Image pouvant être tournée sans modifier l'original.
     var displayBitmap by remember(bitmap) {
         mutableStateOf(bitmap)
     }
 
-    var viewW by remember { mutableStateOf(0f) }
-    var viewH by remember { mutableStateOf(0f) }
+    var viewW by remember { mutableFloatStateOf(0f) }
+    var viewH by remember { mutableFloatStateOf(0f) }
 
-    var cl by remember { mutableStateOf(0f) }
-    var ct by remember { mutableStateOf(0f) }
-    var cr by remember { mutableStateOf(0f) }
-    var cb by remember { mutableStateOf(0f) }
+    var cl by remember { mutableFloatStateOf(0f) }
+    var ct by remember { mutableFloatStateOf(0f) }
+    var cr by remember { mutableFloatStateOf(0f) }
+    var cb by remember { mutableFloatStateOf(0f) }
 
-    var active by remember { mutableStateOf(0) }
+    var active by remember { mutableIntStateOf(0) }
 
-    // Rotation de l'image de 90 degrés.
+    // Valeurs toujours à jour sans redémarrer le détecteur tactile.
+    val latestCl by rememberUpdatedState(cl)
+    val latestCt by rememberUpdatedState(ct)
+    val latestCr by rememberUpdatedState(cr)
+    val latestCb by rememberUpdatedState(cb)
+
+    val latestOffX by rememberUpdatedState(
+        (viewW - displayBitmap.width *
+            minOf(
+                viewW / displayBitmap.width,
+                viewH / displayBitmap.height
+            )) / 2f
+    )
+
+    val latestOffY by rememberUpdatedState(
+        (viewH - displayBitmap.height *
+            minOf(
+                viewW / displayBitmap.width,
+                viewH / displayBitmap.height
+            )) / 2f
+    )
+
+    val latestScale by rememberUpdatedState(
+        if (viewW > 0f && viewH > 0f)
+            minOf(
+                viewW / displayBitmap.width,
+                viewH / displayBitmap.height
+            )
+        else 1f
+    )
+
     fun rotateImage(degrees: Float) {
         val matrix = Matrix().apply {
             postRotate(degrees)
@@ -1544,13 +1576,12 @@ private fun CropScreen(
         active = 0
     }
 
-    val scale =
-        if (viewW > 0f && viewH > 0f)
-            minOf(
-                viewW / displayBitmap.width,
-                viewH / displayBitmap.height
-            )
-        else 1f
+    val scale = if (viewW > 0f && viewH > 0f) {
+        minOf(
+            viewW / displayBitmap.width,
+            viewH / displayBitmap.height
+        )
+    } else 1f
 
     val imgW = displayBitmap.width * scale
     val imgH = displayBitmap.height * scale
@@ -1558,7 +1589,6 @@ private fun CropScreen(
     val offX = (viewW - imgW) / 2f
     val offY = (viewH - imgH) / 2f
 
-    // Réinitialise le cadre après chaque rotation.
     LaunchedEffect(viewW, viewH, displayBitmap) {
         if (viewW > 0f && viewH > 0f) {
             cl = offX + imgW * 0.03f
@@ -1593,28 +1623,19 @@ private fun CropScreen(
             color = fg.copy(alpha = .7f)
         )
 
-        // BOUTONS DE ROTATION
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.Center,
             verticalAlignment = Alignment.CenterVertically
         ) {
             OutlinedButton(
-                onClick = {
-                    rotateImage(-90f)
-                },
+                onClick = { rotateImage(-90f) },
                 enabled = !busy
             ) {
-                Icon(
-                    Icons.Default.RotateLeft,
-                    contentDescription = null
-                )
-
+                Icon(Icons.Default.RotateLeft, null)
                 Spacer(Modifier.width(6.dp))
-
                 Text(
-                    if (ar) "يسار 90°"
-                    else "Gauche 90°",
+                    if (ar) "يسار 90°" else "Gauche 90°",
                     fontSize = 12.sp
                 )
             }
@@ -1622,27 +1643,18 @@ private fun CropScreen(
             Spacer(Modifier.width(12.dp))
 
             OutlinedButton(
-                onClick = {
-                    rotateImage(90f)
-                },
+                onClick = { rotateImage(90f) },
                 enabled = !busy
             ) {
-                Icon(
-                    Icons.Default.RotateRight,
-                    contentDescription = null
-                )
-
+                Icon(Icons.Default.RotateRight, null)
                 Spacer(Modifier.width(6.dp))
-
                 Text(
-                    if (ar) "يمين 90°"
-                    else "Droite 90°",
+                    if (ar) "يمين 90°" else "Droite 90°",
                     fontSize = 12.sp
                 )
             }
         }
 
-        // ZONE DE CADRAGE
         Box(
             Modifier
                 .weight(1f)
@@ -1651,32 +1663,26 @@ private fun CropScreen(
                     viewW = it.width.toFloat()
                     viewH = it.height.toFloat()
                 }
-                .pointerInput(
-                    viewW,
-                    viewH,
-                    displayBitmap,
-                    cl,
-                    ct,
-                    cr,
-                    cb
-                ) {
+                .pointerInput(viewW, viewH, displayBitmap) {
+
                     detectDragGestures(
                         onDragStart = { p ->
+
                             active = when {
-                                abs(p.x - cl) < 40.dp.toPx() &&
-                                    abs(p.y - ct) < 40.dp.toPx() -> 1
+                                abs(p.x - latestCl) < touchSize &&
+                                    abs(p.y - latestCt) < touchSize -> 1
 
-                                abs(p.x - cr) < 40.dp.toPx() &&
-                                    abs(p.y - ct) < 40.dp.toPx() -> 2
+                                abs(p.x - latestCr) < touchSize &&
+                                    abs(p.y - latestCt) < touchSize -> 2
 
-                                abs(p.x - cl) < 40.dp.toPx() &&
-                                    abs(p.y - cb) < 40.dp.toPx() -> 3
+                                abs(p.x - latestCl) < touchSize &&
+                                    abs(p.y - latestCb) < touchSize -> 3
 
-                                abs(p.x - cr) < 40.dp.toPx() &&
-                                    abs(p.y - cb) < 40.dp.toPx() -> 4
+                                abs(p.x - latestCr) < touchSize &&
+                                    abs(p.y - latestCb) < touchSize -> 4
 
-                                p.x >= cl && p.x <= cr &&
-                                    p.y >= ct && p.y <= cb -> 5
+                                p.x >= latestCl && p.x <= latestCr &&
+                                    p.y >= latestCt && p.y <= latestCb -> 5
 
                                 else -> 0
                             }
@@ -1690,55 +1696,57 @@ private fun CropScreen(
                             active = 0
                         },
 
-                        onDrag = { change, d ->
+                        onDrag = { change, dragAmount ->
+
                             change.consume()
 
-                            val minX = offX
-                            val maxX = offX + imgW
-                            val minY = offY
-                            val maxY = offY + imgH
+                            val minX = latestOffX
+                            val maxX = minX + displayBitmap.width * latestScale
+                            val minY = latestOffY
+                            val maxY = minY + displayBitmap.height * latestScale
 
                             when (active) {
-                                1 -> {
-                                    cl = (cl + d.x)
-                                        .coerceIn(minX, cr - minSize)
 
-                                    ct = (ct + d.y)
-                                        .coerceIn(minY, cb - minSize)
+                                1 -> {
+                                    cl = (latestCl + dragAmount.x)
+                                        .coerceIn(minX, latestCr - minSize)
+
+                                    ct = (latestCt + dragAmount.y)
+                                        .coerceIn(minY, latestCb - minSize)
                                 }
 
                                 2 -> {
-                                    cr = (cr + d.x)
-                                        .coerceIn(cl + minSize, maxX)
+                                    cr = (latestCr + dragAmount.x)
+                                        .coerceIn(latestCl + minSize, maxX)
 
-                                    ct = (ct + d.y)
-                                        .coerceIn(minY, cb - minSize)
+                                    ct = (latestCt + dragAmount.y)
+                                        .coerceIn(minY, latestCb - minSize)
                                 }
 
                                 3 -> {
-                                    cl = (cl + d.x)
-                                        .coerceIn(minX, cr - minSize)
+                                    cl = (latestCl + dragAmount.x)
+                                        .coerceIn(minX, latestCr - minSize)
 
-                                    cb = (cb + d.y)
-                                        .coerceIn(ct + minSize, maxY)
+                                    cb = (latestCb + dragAmount.y)
+                                        .coerceIn(latestCt + minSize, maxY)
                                 }
 
                                 4 -> {
-                                    cr = (cr + d.x)
-                                        .coerceIn(cl + minSize, maxX)
+                                    cr = (latestCr + dragAmount.x)
+                                        .coerceIn(latestCl + minSize, maxX)
 
-                                    cb = (cb + d.y)
-                                        .coerceIn(ct + minSize, maxY)
+                                    cb = (latestCb + dragAmount.y)
+                                        .coerceIn(latestCt + minSize, maxY)
                                 }
 
                                 5 -> {
-                                    val w = cr - cl
-                                    val h = cb - ct
+                                    val w = latestCr - latestCl
+                                    val h = latestCb - latestCt
 
-                                    val nl = (cl + d.x)
+                                    val nl = (latestCl + dragAmount.x)
                                         .coerceIn(minX, maxX - w)
 
-                                    val nt = (ct + d.y)
+                                    val nt = (latestCt + dragAmount.y)
                                         .coerceIn(minY, maxY - h)
 
                                     cl = nl
@@ -1809,7 +1817,6 @@ private fun CropScreen(
             )
         }
 
-        // BOUTONS DU BAS
         Row(
             Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -1821,8 +1828,7 @@ private fun CropScreen(
                 modifier = Modifier.weight(1f)
             ) {
                 Text(
-                    if (ar) "إعادة التصوير"
-                    else "Reprendre",
+                    if (ar) "إعادة التصوير" else "Reprendre",
                     fontSize = 12.sp
                 )
             }
@@ -1870,6 +1876,7 @@ private fun CropScreen(
         }
     }
 }
+
 
 /* ÉCRAN DE VÉRIFICATION OCR */
 
