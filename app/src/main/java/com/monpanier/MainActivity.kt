@@ -1759,6 +1759,26 @@ private fun ReviewScreen(
     var showAddStore by remember { mutableStateOf(false) }
     var newStoreName by remember { mutableStateOf("") }
 
+    // Convertit les montants en nombres.
+    fun toAmount(value: String): Double {
+        return value
+            .trim()
+            .replace(" ", "")
+            .replace(",", ".")
+            .toDoubleOrNull() ?: 0.0
+    }
+
+    // Calcule le total de toutes les lignes du ticket.
+    val ticketTotal = drafts.sumOf { draft ->
+        toAmount(draft.total)
+    }
+
+    val totalFormatted = String.format(
+        java.util.Locale.getDefault(),
+        "%.2f",
+        ticketTotal
+    )
+
     Column(
         Modifier
             .fillMaxSize()
@@ -1974,6 +1994,37 @@ private fun ReviewScreen(
             }
         }
 
+        // TOTAL GENERAL DU TICKET
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(
+                containerColor = card
+            )
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    if (ar) "المجموع الكلي للتذكرة"
+                    else "TOTAL DU TICKET",
+                    color = fg,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 16.sp
+                )
+
+                Text(
+                    "$totalFormatted ${if (ar) "" else ""}",
+                    color = Color(0xFF078A4B),
+                    fontWeight = FontWeight.ExtraBold,
+                    fontSize = 20.sp
+                )
+            }
+        }
+
         Row(
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
@@ -1981,14 +2032,20 @@ private fun ReviewScreen(
                 onClick = onRescan,
                 modifier = Modifier.weight(1f)
             ) {
-                Text(if (ar) "إعادة المسح" else "Recommencer", fontSize = 12.sp)
+                Text(
+                    if (ar) "إعادة المسح" else "Recommencer",
+                    fontSize = 12.sp
+                )
             }
 
             Button(
                 onClick = onSave,
                 modifier = Modifier.weight(1f)
             ) {
-                Text(if (ar) "حفظ" else "Enregistrer", fontSize = 12.sp)
+                Text(
+                    if (ar) "حفظ" else "Enregistrer",
+                    fontSize = 12.sp
+                )
             }
         }
 
