@@ -660,14 +660,16 @@ LocalBackupObserver()
                     )
 
                     Screen.STORES -> StoreDirectoryScreen(
-                      pad = pad,
-                      stores = stores,
-                      purchases = purchases,
-                      currencyName = money.name,
-                      fg = fg,
-                      card = card,
-                      dao = dao,
-                      onBack = onBack,
+                        pad = pad,
+                        stores = stores,
+                        purchases = purchases,
+                        currencyName = money.name,
+                        fg = fg,
+                        card = card,
+                        dao = dao,
+                        onBack = {
+                            screen = Screen.SETTINGS
+                        }
                     
                     )
 
